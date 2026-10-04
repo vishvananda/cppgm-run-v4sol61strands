@@ -1,7 +1,15 @@
 #include "preprocess/post/render.h"
 #include <ostream>
+#include <sstream>
+#include <cstring>
 namespace cppgm {
 namespace {
+// PA2 explicitly requires the starter stream scans for bit-perfect debug
+// output. Keep their allocations out of production typed numeric conversion.
+// (C) 2013 CPPGM Foundation www.cppgm.org. All rights reserved.
+float PA2Decode_float(const std::string& s) { std::istringstream in(s); float x = 0; in >> x; return x; }
+double PA2Decode_double(const std::string& s) { std::istringstream in(s); double x = 0; in >> x; return x; }
+long double PA2Decode_long_double(const std::string& s) { std::istringstream in(s); long double x = 0; in >> x; return x; }
 void hex(std::ostream& out, const unsigned char* bytes, std::size_t size) {
     static const char digits[] = "0123456789ABCDEF";
     // One buffered insertion instead of per-byte formatted iostream calls.
@@ -24,7 +32,7 @@ void render_posttoken(std::ostream& out, const PostToken& token, const Identifie
         auto suffix = ids.spelling(token.suffix); out.write(suffix.data, suffix.size); out << ' ';
         if (kind == PostKind::ud_integer || kind == PostKind::ud_floating) {
             out << (kind == PostKind::ud_integer ? "integer " : "floating ");
-            out.write(token.source.data(), token.numeric_prefix); out << '\n'; return;
+            out.write(token.numeric_data, token.numeric_prefix); out << '\n'; return;
         }
         out << (kind == PostKind::ud_string ? "string " : "character ");
     }
@@ -32,7 +40,16 @@ void render_posttoken(std::ostream& out, const PostToken& token, const Identifie
         out << "array of " << token.elements << ' ' << type_name(token.type) << ' ';
         hex(out, token.units, token.elements*token.width);
     } else {
-        out << type_name(token.type) << ' '; hex(out, token.scalar.data(), token.width);
+        out << type_name(token.type) << ' ';
+        std::array<unsigned char, 16> bytes = token.scalar;
+        if (token.type == FundamentalType::FT_FLOAT) {
+            float value = PA2Decode_float(token.source); std::memcpy(bytes.data(), &value, sizeof(value));
+        } else if (token.type == FundamentalType::FT_DOUBLE) {
+            double value = PA2Decode_double(token.source); std::memcpy(bytes.data(), &value, sizeof(value));
+        } else if (token.type == FundamentalType::FT_LONG_DOUBLE) {
+            long double value = PA2Decode_long_double(token.source); std::memcpy(bytes.data(), &value, 10);
+        }
+        hex(out, bytes.data(), token.width);
     }
     out << '\n';
 }

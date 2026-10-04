@@ -12,8 +12,8 @@ int main(int, char**) {
     try {
         std::ios::sync_with_stdio(false);
         const auto start = std::chrono::steady_clock::now();
-        cppgm::SourceBuffer source(std::string(std::istreambuf_iterator<char>(std::cin),
-                                             std::istreambuf_iterator<char>()));
+        cppgm::SourceBuffer source{std::string(std::istreambuf_iterator<char>(std::cin),
+                                             std::istreambuf_iterator<char>())};
         const auto loaded = std::chrono::steady_clock::now();
         cppgm::IdentifierTable identifiers;
         cppgm::LexerOptions options;

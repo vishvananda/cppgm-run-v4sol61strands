@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -178,14 +179,15 @@ void Lexer::ordinary_literal(int quote) {
             if (options_.collect_literal_elements) literal_elements_.push_back({static_cast<std::uint32_t>(values[simple-names]), false, false});
             take(); continue;
         }
-        unsigned base = 8, limit = 3;
+        unsigned base = 8;
+        std::size_t limit = 3;
         if (c == 'x') {
-            take(); base = 16; limit = ~0u;
+            take(); base = 16; limit = std::numeric_limits<std::size_t>::max();
             if (peek().universal || hex(peek().value) < 0) invalid("hex escape has no digits");
         } else if (c < '0' || c > '7') invalid("invalid escape sequence");
         std::uint32_t value = 0;
         bool overflow = false;
-        for (unsigned i = 0; i < limit && !peek().universal; ++i) {
+        for (std::size_t i = 0; i < limit && !peek().universal; ++i) {
             int digit_value = hex(peek().value);
             if (digit_value < 0 || static_cast<unsigned>(digit_value) >= base) break;
             if (value > (UINT32_MAX-static_cast<unsigned>(digit_value))/base) overflow = true;
@@ -289,21 +291,47 @@ Token Lexer::next() {
     }
     // Test literal prefixes before identifier maximal munch. Never look through
     // a raw opening quote; its contents must not pass through phase1/2.
-    static const char* const prefixes[] = {"u8R\"", "u8\"", "uR\"", "UR\"", "LR\"", "R\"",
-        "u\"", "U\"", "L\"", "u'", "U'", "L'", "\"", "'"};
-    if (c == 'u' || c == 'U' || c == 'L' || c == 'R' || c == '"' || c == '\'') {
-        for (const char* prefix : prefixes) {
-            if (!matches(prefix)) continue;
-            std::size_t length = std::strlen(prefix);
-            bool raw = length >= 2 && prefix[length - 2] == 'R';
-            int quote = prefix[length - 1];
-            for (std::size_t i = 1; i < length; ++i) take();
-            if (raw) raw_literal(); else ordinary_literal(quote);
-            std::size_t before = spelling_.size(); literal_end_ = before; suffix();
-            bool ud = spelling_.size() != before;
-            return finish(quote == '\'' ? (ud ? TokenKind::ud_character : TokenKind::character)
-                : (ud ? TokenKind::ud_string : TokenKind::string), start);
+    // First-character dispatch avoids trying every prefix for every literal.
+    // Never inspect past a raw opening quote, where phases 1/2 are undone.
+    const char* prefix = nullptr;
+    switch (c) {
+    case '"': prefix = "\""; break;
+    case '\'': prefix = "'"; break;
+    case 'R': if (peek(1).value == '"') prefix = "R\""; break;
+    case 'u':
+        if (peek(1).value == '"') prefix = "u\"";
+        else if (peek(1).value == '\'') prefix = "u'";
+        else if (peek(1).value == 'R' && peek(2).value == '"') prefix = "uR\"";
+        else if (peek(1).value == '8') {
+            if (peek(2).value == '"') prefix = "u8\"";
+            else if (peek(2).value == 'R' && peek(3).value == '"') prefix = "u8R\"";
         }
+        break;
+    case 'U':
+        if (peek(1).value == '"') prefix = "U\"";
+        else if (peek(1).value == '\'') prefix = "U'";
+        else if (peek(1).value == 'R' && peek(2).value == '"') prefix = "UR\"";
+        break;
+    case 'L':
+        if (peek(1).value == '"') prefix = "L\"";
+        else if (peek(1).value == '\'') prefix = "L'";
+        else if (peek(1).value == 'R' && peek(2).value == '"') prefix = "LR\"";
+        break;
+    default: break;
+    }
+    if (prefix) {
+        std::size_t length = std::strlen(prefix);
+        bool raw = length >= 2 && prefix[length - 2] == 'R';
+        int quote = prefix[length - 1];
+        for (std::size_t i = 1; i < length; ++i) take();
+        if (raw) raw_literal(); else ordinary_literal(quote);
+        std::size_t before = spelling_.size(); literal_end_ = before;
+        literal_physical_end_ = consumed_end_;
+        literal_suffix_location_ = peek().location;
+        suffix();
+        bool ud = spelling_.size() != before;
+        return finish(quote == '\'' ? (ud ? TokenKind::ud_character : TokenKind::character)
+            : (ud ? TokenKind::ud_string : TokenKind::string), start);
     }
     if (identifier_initial(c)) {
         do { take(); } while (identifier_nondigit(peek().value) || digit(peek().value));

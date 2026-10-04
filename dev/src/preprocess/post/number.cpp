@@ -1,7 +1,9 @@
+// Starter token/type names:
+// (C) 2013 CPPGM Foundation www.cppgm.org. All rights reserved.
 #include "preprocess/post/number.h"
 #include <climits>
 #include <cstring>
-#include <sstream>
+#include <cstdlib>
 
 namespace cppgm {
 namespace {
@@ -40,10 +42,6 @@ IntegerSuffix integer_suffix(const std::string& s, std::size_t begin) {
     }
     result.valid = i == s.size(); return result;
 }
-// Required PA2 output scan: these are the starter PA2Decode algorithms.
-float PA2Decode_float(const std::string& s) { std::istringstream in(s); float x = 0; in >> x; return x; }
-double PA2Decode_double(const std::string& s) { std::istringstream in(s); double x = 0; in >> x; return x; }
-long double PA2Decode_long_double(const std::string& s) { std::istringstream in(s); long double x = 0; in >> x; return x; }
 template<class T> void store(PostToken& token, T value) {
     token.width = sizeof(T); std::memcpy(token.scalar.data(), &value, sizeof(T));
 }
@@ -91,13 +89,13 @@ void convert_number(const std::string& s, IdentifierTable& ids, PostToken& token
         }
         token.kind = PostKind::scalar;
         if (type == 'f' || type == 'F') {
-            token.type = FundamentalType::FT_FLOAT; store(token, PA2Decode_float(s));
+            token.type = FundamentalType::FT_FLOAT; store(token, std::strtof(s.c_str(), nullptr));
         } else if (type == 'l' || type == 'L') {
             token.type = FundamentalType::FT_LONG_DOUBLE;
-            long double value = PA2Decode_long_double(s);
+            long double value = std::strtold(s.c_str(), nullptr);
             // x87's ten value bytes plus deterministic six ABI padding bytes.
             token.width = 16; std::memcpy(token.scalar.data(), &value, 10);
-        } else { token.type = FundamentalType::FT_DOUBLE; store(token, PA2Decode_double(s)); }
+        } else { token.type = FundamentalType::FT_DOUBLE; store(token, std::strtod(s.c_str(), nullptr)); }
         return;
     }
     IntegerSuffix spec = integer_suffix(s, i);

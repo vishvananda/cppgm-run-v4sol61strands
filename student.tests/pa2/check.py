@@ -46,6 +46,7 @@ cases = [
     ('operator""sv; operator""_x;', 'simple operator KW_OPERATOR\nliteral "" array of 1 char 00\nidentifier sv\nsimple ; OP_SEMICOLON\nsimple operator KW_OPERATOR\nliteral "" array of 1 char 00\nidentifier _x\nsimple ; OP_SEMICOLON\n'),
     ('operator u""sv; operator R"()"sv;', 'simple operator KW_OPERATOR\ninvalid u""sv\nsimple ; OP_SEMICOLON\nsimple operator KW_OPERATOR\ninvalid R"()"sv\nsimple ; OP_SEMICOLON\n'),
     ('1.0_f+', 'user-defined-literal 1.0_f _f floating 1.0\nsimple + OP_PLUS\n'),
+    ('1.25f 1.25 1.25L .5e2 1e2F', 'literal 1.25f float 0000A03F\nliteral 1.25 double 000000000000F43F\nliteral 1.25L long double 00000000000000A0FF3F000000000000\nliteral .5e2 double 0000000000004940\nliteral 1e2F float 0000C842\n'),
     ('0_lπ 1.0_fπ', 'user-defined-literal 0_lπ _lπ integer 0\nuser-defined-literal 1.0_fπ _fπ floating 1.0\n'),
     ('0x1e_foo 1_e3 1.0_e3 1e3_foo', 'user-defined-literal 0x1e_foo _foo integer 0x1e\nuser-defined-literal 1_e3 _e3 integer 1\nuser-defined-literal 1.0_e3 _e3 floating 1.0\nuser-defined-literal 1e3_foo _foo floating 1e3\n'),
 ]

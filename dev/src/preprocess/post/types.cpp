@@ -1,3 +1,5 @@
+// Starter token/type names and PA2Decode algorithms:
+// (C) 2013 CPPGM Foundation www.cppgm.org. All rights reserved.
 #include "preprocess/post/types.h"
 #include <unordered_map>
 namespace cppgm {

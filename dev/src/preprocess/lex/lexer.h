@@ -83,6 +83,8 @@ public:
     const LexerMetrics& metrics() const { return metrics_; }
     const std::vector<LiteralElement>& literal_elements() const { return literal_elements_; }
     std::size_t literal_end() const { return literal_end_; }
+    std::size_t literal_physical_end() const { return literal_physical_end_; }
+    SourceLocation literal_suffix_location() const { return literal_suffix_location_; }
 private:
     struct Character {
         int value;
@@ -103,7 +105,8 @@ private:
     LexerMetrics metrics_;
     LexerOptions options_;
     std::vector<LiteralElement> literal_elements_;
-    std::size_t literal_end_ = 0;
+    std::size_t literal_end_ = 0, literal_physical_end_ = 0;
+    SourceLocation literal_suffix_location_ = {0, 0, 0};
     Character decode(std::size_t offset) const;
     Character phase1(std::size_t offset) const;
     void advance(std::size_t end);

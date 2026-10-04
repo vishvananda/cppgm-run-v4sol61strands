@@ -18,6 +18,7 @@ class PostCursor {
     PostMetrics metrics_;
     std::vector<LiteralElement> sequence_elements_;
     std::vector<unsigned char> sequence_units_;
+    std::string numeric_spelling_;
     void advance();
     void strings(PostToken& result);
     void character(PostToken& result);

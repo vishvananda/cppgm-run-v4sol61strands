@@ -138,9 +138,9 @@ PostToken PostCursor::next() {
     if (after_operator_ && current_.kind == TokenKind::ud_string &&
         lexer_.literal_end() == 2 && s.compare(0, 2, "\"\"") == 0) {
         pending_identifier_ = identifiers_.intern(s.substr(lexer_.literal_end()));
-        pending_range_ = {current_.range.begin+lexer_.literal_end(), current_.range.end};
-        pending_location_ = current_.location;
-        result.range.end = pending_range_.begin;
+        pending_location_ = lexer_.literal_suffix_location();
+        pending_range_ = {pending_location_.offset, current_.range.end};
+        result.range.end = lexer_.literal_physical_end();
         result.kind = PostKind::array; result.type = type(encoding(s));
         result.width = width(encoding(s)); result.elements = 1;
         sequence_units_.clear(); unit(sequence_units_, 0, result.width);
@@ -160,7 +160,13 @@ PostToken PostCursor::next() {
                 result.kind = PostKind::identifier; result.identifier = current_.identifier;
             }
             break;
-        case TokenKind::number: ++metrics_.numbers; convert_number(s, identifiers_, result); break;
+        case TokenKind::number:
+            ++metrics_.numbers; convert_number(s, identifiers_, result);
+            if (result.kind == PostKind::ud_integer || result.kind == PostKind::ud_floating) {
+                numeric_spelling_.assign(s.data(), result.numeric_prefix);
+                result.numeric_data = numeric_spelling_.data();
+            }
+            break;
         case TokenKind::character:
         case TokenKind::ud_character: character(result); break;
         default: break;

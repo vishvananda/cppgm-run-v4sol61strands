@@ -1,3 +1,5 @@
+// Starter token/type names and PA2Decode algorithms:
+// (C) 2013 CPPGM Foundation www.cppgm.org. All rights reserved.
 #pragma once
 #include <array>
 #include <vector>
@@ -182,6 +184,8 @@ struct PostToken {
     FundamentalType type = FundamentalType::FT_INT;
     std::array<unsigned char, 16> scalar = {{0}};
     std::size_t width = 0, elements = 0, numeric_prefix = 0;
+    // Raw numeric UD payload (not a key), borrowed until the next cursor call.
+    const char* numeric_data = nullptr;
     // Borrowed cursor-owned code units, valid until its next next() call.
     const unsigned char* units = nullptr;
     // Explicit debug view only, not semantic transport or a lookup key.
