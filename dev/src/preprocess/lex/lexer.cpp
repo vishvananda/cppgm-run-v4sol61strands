@@ -146,7 +146,10 @@ Lexer::Character Lexer::take(bool append) {
     for (std::size_t i = 1; i < count_; ++i) lookahead_[i - 1] = lookahead_[i];
     --count_;
     consumed_end_ = c.end;
-    if (append && c.value >= 0) append_utf8(spelling_, c.value);
+    if (append && c.value >= 0) {
+        if (c.value < 128) spelling_ += static_cast<char>(c.value);
+        else append_utf8(spelling_, c.value);
+    }
     return c;
 }
 bool Lexer::matches(const char* text) {
@@ -199,6 +202,7 @@ void Lexer::raw_literal() {
         spelling_.append(source_.bytes, physical_, c.end - physical_);
         advance(c.end); ++metrics_.decoded_characters;
     }
+    const std::size_t body_begin = physical_;
     for (;;) {
         Character c = decode(physical_);
         if (c.value == -1) invalid("unterminated raw string literal");
@@ -207,13 +211,12 @@ void Lexer::raw_literal() {
             const std::size_t end = physical_ + 1 + delimiter.size();
             if (end < source_.bytes.size() && source_.bytes[end] == '"'
                 && source_.bytes.compare(physical_ + 1, delimiter.size(), delimiter) == 0) {
-                spelling_.append(source_.bytes, physical_, end + 1 - physical_);
+                spelling_.append(source_.bytes, body_begin, end + 1 - body_begin);
                 advance(end + 1); consumed_end_ = physical_;
                 slash_odd_ = false; ended_splice_ = false; last_ = '"'; final_newline_ = false;
                 return;
             }
         }
-        spelling_.append(source_.bytes, physical_, c.end - physical_);
         advance(c.end); ++metrics_.decoded_characters;
     }
 }
