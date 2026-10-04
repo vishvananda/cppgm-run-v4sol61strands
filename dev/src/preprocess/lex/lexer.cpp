@@ -114,7 +114,7 @@ Lexer::Character Lexer::translated() {
     for (;;) {
         Character c = phase1(physical_);
         if (c.value == -1) {
-            if (!final_newline_ && last_ != -1 && last_ != '\n') {
+            if (!final_newline_ && (ended_splice_ || (last_ != -1 && last_ != '\n'))) {
                 final_newline_ = true; c.value = '\n'; last_ = '\n';
             }
             return c;
@@ -125,10 +125,12 @@ Lexer::Character Lexer::translated() {
             Character following = phase1(physical_);
             if (following.value == '\n') {
                 advance(following.end); ++metrics_.decoded_characters;
+                ended_splice_ = true;
                 // Splices do not reset escape parity in the logical stream.
                 continue;
             }
         }
+        ended_splice_ = false;
         slash_odd_ = c.value == '\\' ? !slash_odd_ : false;
         last_ = c.value;
         return c;
@@ -163,7 +165,7 @@ void Lexer::ordinary_literal(int quote) {
         if (c != '\\') continue;
         c = peek().value;
         if (c == -1 || c == '\n') invalid("unterminated escape");
-        if (std::strchr("'\"?\\abfnrtv", c) && c != 0) { take(); continue; }
+        if (c > 0 && c < 128 && std::strchr("'\"?\\abfnrtv", c)) { take(); continue; }
         if (c >= '0' && c <= '7') {
             for (unsigned i = 0; i < 3 && peek().value >= '0' && peek().value <= '7'; ++i) take();
             continue;
@@ -207,7 +209,7 @@ void Lexer::raw_literal() {
                 && source_.bytes.compare(physical_ + 1, delimiter.size(), delimiter) == 0) {
                 spelling_.append(source_.bytes, physical_, end + 1 - physical_);
                 advance(end + 1); consumed_end_ = physical_;
-                slash_odd_ = false; last_ = '"'; final_newline_ = false;
+                slash_odd_ = false; ended_splice_ = false; last_ = '"'; final_newline_ = false;
                 return;
             }
         }
@@ -227,7 +229,10 @@ Token Lexer::next() {
     spelling_.clear();
     const Character start = peek();
     int c = start.value;
-    if (c == -1) return finish(TokenKind::eof, start);
+    if (c == -1) {
+        consumed_end_ = start.end;
+        return finish(TokenKind::eof, start);
+    }
     if (c == '\n') {
         take(false); directive_ = Directive::start;
         return finish(TokenKind::newline, start);

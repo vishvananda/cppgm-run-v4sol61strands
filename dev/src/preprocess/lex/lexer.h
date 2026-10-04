@@ -65,7 +65,7 @@ private:
     std::size_t physical_ = 0, line_ = 1, column_ = 1;
     std::array<Character, 8> lookahead_;
     std::size_t count_ = 0, consumed_end_ = 0;
-    bool final_newline_ = false, slash_odd_ = false;
+    bool final_newline_ = false, slash_odd_ = false, ended_splice_ = false;
     int last_ = -1;
     enum class Directive { start, after_hash, header, ordinary };
     Directive directive_ = Directive::start;
