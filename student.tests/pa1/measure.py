@@ -6,6 +6,7 @@ import json
 import os
 import pathlib
 import statistics
+import shutil
 import subprocess
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -14,6 +15,7 @@ parser.add_argument('artifact', type=pathlib.Path)
 parser.add_argument('--label', default='current')
 parser.add_argument('--prepare', action='store_true')
 parser.add_argument('--runs', type=int, default=3)
+parser.add_argument('--against', help='Interleave frozen cursor/pptoken binaries from this earlier label')
 args = parser.parse_args()
 args.artifact.mkdir(parents=True, exist_ok=True)
 A = args.artifact.resolve()
@@ -50,7 +52,8 @@ sources = [ROOT / 'dev/src/preprocess/lex/lexer.cpp', ROOT / 'dev/src/preprocess
 cursor = A / ('cursor-' + args.label)
 tool = A / ('pptoken-' + args.label)
 run(['g++', *flags, ROOT / 'student.tests/pa1/lex_bench.cpp', *sources, '-o', cursor])
-run(['g++', *flags, ROOT / 'dev/pptoken.cpp', *sources, '-o', tool])
+run(['g++', *flags, ROOT / 'dev/pptoken.cpp', *sources,
+              ROOT / 'dev/src/preprocess/tokens/DebugPPTokenStream.cpp', '-o', tool])
 reference = ROOT / 'reference-binaries/pptoken'
 variants = {
     'cursor': [cursor],
@@ -59,10 +62,26 @@ variants = {
     'clang': ['clang++', '-std=c++11', '-trigraphs', '-E', '-P', '-x', 'c++', '-'],
     'reference': [reference],
 }
+if args.against:
+    for variant in ('cursor', 'pptoken'):
+        frozen = A / (variant + '-' + args.against)
+        assert frozen.is_file(), frozen
+        variants[variant + '-baseline'] = [frozen]
+
+host_paths = {host: pathlib.Path(shutil.which(host)).resolve()
+              for host in ('g++', 'clang++')}
+gcc_frontend = pathlib.Path(subprocess.check_output(['g++', '-print-prog-name=cc1plus'], text=True).strip()).resolve()
 manifest = {'cpu': cpu, 'flags': flags, 'warmup': 1, 'runs': args.runs,
             'cpu_model': next(line.strip() for line in pathlib.Path('/proc/cpuinfo').read_text().splitlines()
                               if line.startswith('model name')),
             'variants': variants, 'hashes': {p.name: sha(p) for p in [cursor, tool, reference]},
+            'hosts': {host: {'path': str(path), 'sha256': sha(path),
+                'version': subprocess.check_output([host, '--version'], text=True).splitlines()[0]}
+              for host, path in host_paths.items()},
+            'gcc_frontend': {'path': str(gcc_frontend), 'sha256': sha(gcc_frontend)},
+            'commands': {name: [str(x) for x in cmd] for name, cmd in variants.items()},
+            'binaries': {name: sha(pathlib.Path(cmd[0])) for name, cmd in variants.items()
+                         if pathlib.Path(cmd[0]).is_file()},
             'inputs': {name: sha(A / (name + '.cpp')) for name in ('declarations', 'raw', 'hosted')}}
 manifest['variants'] = {k: [str(x) for x in v] for k, v in variants.items()}
 (A / (args.label + '-manifest.json')).write_text(json.dumps(manifest, indent=2))
@@ -111,7 +130,7 @@ for workload in ('declarations', 'raw', 'hosted'):
             numbers = [o[key] for o in group]
             return f'{statistics.median(numbers):.3g}[{min(numbers):.3g},{max(numbers):.3g}]'
         lines.append(f'{workload} {variant} {stats("instructions")} {stats("cycles")} '
-                     f'{statistics.median(o["ipc"] for o in group):.3f} {stats("wall")} {stats("rss_kb")}')
+                     f'{stats("ipc")} {stats("wall")} {stats("rss_kb")}')
 report = '\n'.join(lines) + '\n'
 (A / (args.label + '-summary.txt')).write_text(report)
 print(report)

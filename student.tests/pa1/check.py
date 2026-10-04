@@ -73,12 +73,35 @@ cases = [
     (b'\x00', [O(b'\x00'), NL, EOF]),
 ]
 
+# Audit reducers: UCN values remain literal data, not delimiters/escapes.
+# Expected outputs follow N3337/N3485 [lex.charset]/2 and [lex.ccon]/[lex.string].
+cases += [
+    (b'"\\u0041"', [S('"A"'), NL, EOF]),
+    (b'"\\u0022"', [S('"""'), NL, EOF]),
+    (b'"\\u005c"', [S('"\\"'), NL, EOF]),
+    (b'"\\u000A"', [S('"\n"'), NL, EOF]),
+    (b'"\\u0000"', [S(b'"\x00"'), NL, EOF]),
+    (b"'\\u0027'", [('character-literal', "'" * 3), NL, EOF]),
+    (b'"\\u005c\\u0041"', [S('"\\A"'), NL, EOF]),
+    (b'"\\u005c\\\nA"', [S('"\\A"'), NL, EOF]),
+    (b'"\\1\\u0031"', [S('"\\11"'), NL, EOF]),
+    (b'"\\x41\\u0031"', [S('"\\x411"'), NL, EOF]),
+    (b'R"\r(x)\r"', [S('R"\r(x)\r"'), NL, EOF]),
+    (b'\\u0024 \\u0060', [O('$'), WS, O('`'), NL, EOF]),
+    (b'R"(\\u0041\\u0022)"_x',
+     [('user-defined-string-literal', 'R"(\\u0041\\u0022)"_x'), NL, EOF]),
+]
+
 rejections = [b'/*', b'"', b"''", b"'x\n'", b'"\\8"', b'"\\xZ"',
               b'R"12345678901234567()12345678901234567"', b'R"a b(x)a b"',
               b'R"(x)', b'#include <x', b'#include ""',
               b'\\U00110000', b'\\uD800', b'\\UFFFFFFFF',
               b'\xc0\x80', b'\xe0\x80\x80', b'\xed\xa0\x80', b'\xf4\x90\x80\x80',
               b'\xe2\x82', b'\x80', b'\xff', b'R"(\xff)"', b'"\\\xc4\xa1"', b'"\\\xc5\xa1"']
+
+rejections += [b'"\\x\\u0031"', b'\\u0061', b'\\u002b', b'\\u000A', b'\\u009F',
+               b'\\u0022a\\u0022', b'1\\u0030', b'#include <\\u0041>',
+               b'"\\u005c\n"', b'"\\u005c', b'"\\uDFFF"']
 
 for n, (source, expected) in enumerate(cases):
     result = subprocess.run([TOOL], input=source, capture_output=True)
@@ -100,6 +123,7 @@ int π = box<::n::size_t>::value;
 const char* raw = u8R"??=(??/ \\u03C0
 )??=";
 const char* escaped = "\\\\u{";
+const char* ucn = "\\u0022\\u005c\\u000A\\u0041";
 int tri = 1 ??! 2;
 int spl\\
 ice = 0;

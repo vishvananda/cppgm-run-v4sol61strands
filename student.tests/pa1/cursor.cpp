@@ -27,6 +27,31 @@ int main() {
     assert(cursor.next().kind == TokenKind::newline);
     Token eof = cursor.next();
     assert(eof.kind == TokenKind::eof && eof.range.begin == source.bytes.size());
+    // UCN provenance: offsets span the original spelling even when decoded
+    // data is a delimiter, newline, NUL or backslash.
+    SourceBuffer literal("\"\\u0022\\u005c\\u000A\\u0000\" next");
+    Lexer literal_cursor(literal, ids);
+    Token lit = literal_cursor.next();
+    assert(lit.kind == TokenKind::string && lit.range.begin == 0 && lit.range.end == 26);
+    assert(literal_cursor.spelling() == std::string("\"\"\\\n\0\"", 6));
+    assert(literal_cursor.next().kind == TokenKind::whitespace);
+    Token after = literal_cursor.next();
+    assert(after.location.line == 1 && after.location.column == 28);
+    assert(after.range.begin == 27 && literal_cursor.spelling() == "next");
+
+    // Literal lookahead resumes phase translation after the physical raw body.
+    SourceBuffer equivalent("α \\u03B1 alpha\\\nbeta");
+    Lexer equivalent_cursor(equivalent, ids);
+    assert(equivalent_cursor.next().identifier == greek.identifier);
+    equivalent_cursor.next();
+    assert(equivalent_cursor.next().identifier == greek.identifier);
+    equivalent_cursor.next();
+    assert(equivalent_cursor.next().identifier == first.identifier);
+    equivalent_cursor.next();
+    Token end1 = equivalent_cursor.next(), end2 = equivalent_cursor.next();
+    assert(end1.kind == TokenKind::eof && end2.kind == TokenKind::eof);
+    assert(end1.range.begin == end2.range.begin && end1.range.end == end2.range.end);
+
     const char* retained = ids.spelling(first.identifier).data;
     for (unsigned n = 0; n < 100000; ++n) ids.intern("unique" + std::to_string(n));
     assert(retained == ids.spelling(first.identifier).data && ids.spelling(first.identifier).equals("alphabeta"));

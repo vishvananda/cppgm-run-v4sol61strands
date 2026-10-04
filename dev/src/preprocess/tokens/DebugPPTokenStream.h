@@ -2,21 +2,25 @@
 
 #pragma once
 
-#include <iostream>
+#include <array>
 #include <string>
 
 #include "preprocess/tokens/IPPTokenStream.h"
 
 struct DebugPPTokenStream : IPPTokenStream
 {
+	DebugPPTokenStream() = default;
+	DebugPPTokenStream(const DebugPPTokenStream&) = delete;
+	DebugPPTokenStream& operator=(const DebugPPTokenStream&) = delete;
+	~DebugPPTokenStream() { flush(); }
 	void emit_whitespace_sequence()
 	{
-		std::cout << "whitespace-sequence 0 \n";
+		append("whitespace-sequence 0 \n", 23);
 	}
 
 	void emit_new_line()
 	{
-		std::cout << "new-line 0 \n";
+		append("new-line 0 \n", 12);
 	}
 
 	void emit_header_name(const std::string& data)
@@ -66,15 +70,19 @@ struct DebugPPTokenStream : IPPTokenStream
 
 	void emit_eof()
 	{
-		std::cout << "eof\n";
+		append("eof\n", 4);
+		flush();
 	}
 
 private:
 
-	void write_token(const std::string& type, const std::string& data)
-	{
-		std::cout << type << " " << data.size() << " ";
-		std::cout.write(data.data(), data.size());
-		std::cout << '\n';
-	}
+	// Bounded rendering scratch, never a token vector or a phase transport. The
+	// previous string type parameter allocated once per long token-kind name and
+	// formatted ostream sentries dominated lexical workloads in perf profiles.
+	std::array<char, 65536> buffer_;
+	std::size_t used_ = 0;
+
+	void flush();
+	void append(const char* data, std::size_t size);
+	void write_token(const char* type, const std::string& data);
 };

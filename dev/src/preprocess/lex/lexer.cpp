@@ -40,7 +40,7 @@ Lexer::Lexer(const SourceBuffer& source, IdentifierTable& identifiers)
     if (source.bytes.compare(0, 3, "\xEF\xBB\xBF") == 0) physical_ = 3;
 }
 Lexer::Character Lexer::decode(std::size_t offset) const {
-    Character result{-1, {offset, line_, column_}, offset};
+    Character result{-1, {offset, line_, column_}, offset, false};
     if (offset == source_.bytes.size()) return result;
     unsigned c = static_cast<unsigned char>(source_.bytes[offset]);
     if (c < 0x80) { result.value = c; result.end = offset + 1; return result; }
@@ -83,7 +83,7 @@ Lexer::Character Lexer::phase1(std::size_t offset) const {
             if (complete) {
                 if (value > 0x10FFFF || (value >= 0xD800 && value <= 0xDFFF))
                     invalid("invalid universal character value");
-                c.value = static_cast<int>(value); c.end += length + 1;
+                c.value = static_cast<int>(value); c.end += length + 1; c.universal = true;
             }
         }
     }
@@ -106,7 +106,7 @@ Lexer::Character Lexer::translated() {
         }
         advance(c.end);
         ++metrics_.decoded_characters;
-        if (c.value == '\\') {
+        if (c.value == '\\' && !c.universal) {
             // A speculative following UCN sees this backslash's logical escape
             // parity. Otherwise an escaped backslash can decode (or reject) a
             // UCN before the first backslash is published to the cursor.
@@ -114,7 +114,7 @@ Lexer::Character Lexer::translated() {
             slash_odd_ = !previous_parity;
             Character following = phase1(physical_);
             slash_odd_ = previous_parity;
-            if (following.value == '\n') {
+            if (following.value == '\n' && !following.universal) {
                 advance(following.end); ++metrics_.decoded_characters;
                 ended_splice_ = true;
                 // Splices do not reset escape parity in the logical stream.
@@ -122,7 +122,7 @@ Lexer::Character Lexer::translated() {
             }
         }
         ended_splice_ = false;
-        slash_odd_ = c.value == '\\' ? !slash_odd_ : false;
+        slash_odd_ = c.value == '\\' && !c.universal ? !slash_odd_ : false;
         last_ = c.value;
         return c;
     }
@@ -132,8 +132,13 @@ const Lexer::Character& Lexer::peek(std::size_t n) {
     while (count_ <= n) lookahead_[count_++] = translated();
     return lookahead_[n];
 }
-Lexer::Character Lexer::take(bool append) {
+Lexer::Character Lexer::take(bool append, bool literal_data) {
     Character c = peek();
+    // N3485 [lex.charset]/2: basic/control UCNs are allowed only in literal
+    // character sequences. Validate on consumption, not speculative lookahead.
+    if (c.universal && !literal_data && c.value < 0xA0
+        && c.value != 0x24 && c.value != 0x40 && c.value != 0x60)
+        invalid("basic or control universal character outside literal");
     for (std::size_t i = 1; i < count_; ++i) lookahead_[i - 1] = lookahead_[i];
     --count_;
     consumed_end_ = c.end;
@@ -152,6 +157,9 @@ void Lexer::ordinary_literal(int quote) {
     std::size_t characters = 0;
     for (;;) {
         int c = peek().value;
+        if (peek().universal) {
+            ++characters; take(true, true); continue;
+        }
         if (c == -1 || c == '\n') invalid("unterminated ordinary literal");
         if (c == quote) { take(); break; }
         ++characters;
@@ -161,13 +169,14 @@ void Lexer::ordinary_literal(int quote) {
         if (c == -1 || c == '\n') invalid("unterminated escape");
         if (c > 0 && c < 128 && std::strchr("'\"?\\abfnrtv", c)) { take(); continue; }
         if (c >= '0' && c <= '7') {
-            for (unsigned i = 0; i < 3 && peek().value >= '0' && peek().value <= '7'; ++i) take();
+            for (unsigned i = 0; i < 3 && !peek().universal
+                 && peek().value >= '0' && peek().value <= '7'; ++i) take();
             continue;
         }
         if (c == 'x') {
             take();
-            if (hex(peek().value) < 0) invalid("hex escape has no digits");
-            while (hex(peek().value) >= 0) take();
+            if (peek().universal || hex(peek().value) < 0) invalid("hex escape has no digits");
+            while (!peek().universal && hex(peek().value) >= 0) take();
             continue;
         }
         invalid("invalid escape sequence");
@@ -186,7 +195,10 @@ void Lexer::raw_literal() {
     while (true) {
         Character c = decode(physical_);
         if (c.value == '(') { spelling_ += '('; advance(c.end); break; }
-        if (c.value == -1 || c.value == ')' || c.value == '\\' || c.value == '\n' || space(c.value))
+        // PA1 d-char excludes exactly SP/HT/VT/FF/LF, not CR. Its course
+        // source set permits Unicode and other code points in raw delimiters.
+        if (c.value == -1 || c.value == ')' || c.value == '\\' || c.value == '\n'
+            || c.value == ' ' || c.value == '\t' || c.value == '\v' || c.value == '\f')
             invalid("invalid raw string delimiter");
         if (++delimiter_characters > 16) invalid("raw string delimiter is too long");
         delimiter.append(source_.bytes, physical_, c.end - physical_);

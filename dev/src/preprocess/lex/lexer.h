@@ -76,6 +76,7 @@ private:
         int value;
         SourceLocation location;
         std::size_t end;
+        bool universal; // Provenance survives phase 1; literal data is not syntax.
     };
     const SourceBuffer& source_;
     IdentifierTable& identifiers_;
@@ -93,7 +94,7 @@ private:
     void advance(std::size_t end);
     Character translated();
     const Character& peek(std::size_t n = 0);
-    Character take(bool append = true);
+    Character take(bool append = true, bool literal_data = false);
     bool matches(const char* text);
     void raw_literal();
     void ordinary_literal(int quote);

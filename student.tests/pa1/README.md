@@ -12,11 +12,11 @@ for host in g++ clang++; do
 done
 # Also run the same cursor with -O1 -g -fsanitize=address,undefined
 # -fno-omit-frame-pointer (verified with GCC).
-python3 student.tests/pa1/measure.py "$RALPH_ARTIFACT_DIR/pa1-perf-final" \
-  --prepare --label parity --runs 5
+python3 student.tests/pa1/measure.py "$RALPH_ARTIFACT_DIR/pa1-perf-new" \
+  --prepare --label new --runs 5
 ```
 
-`check.py`: 39 exact byte-output cases and 24 rejections; portable phase
+`check.py`: 52 exact byte-output cases and 35 rejections; portable phase
 interaction source qualified with both GCC and Clang. `cursor.cpp`: locations,
 physical ranges, stable IDs/spellings across 100,000 insertions and an oversized
 name, Unicode scalar/identifier boundaries, and 1k/10k/100k repeated units.
@@ -24,7 +24,7 @@ The latter produce 9,001/90,001/900,001 tokens, 24k/240k/2.4M decoded characters
 3k/30k/300k raw candidates and one interned name. GCC/Clang cursor and GCC
 ASan/UBSan controls pass. No course fixtures, outputs or comparisons changed.
 
-## Frozen performance observations (October 4, 2026)
+## Inherited pre-audit performance observations (October 4, 2026)
 
 Artifacts: `$RALPH_ARTIFACT_DIR/pa1-perf{,-final}`. Each includes manifests with
 input/binary hashes and commands, every raw `perf stat`/time/telemetry result,
@@ -97,3 +97,43 @@ Benchmark compiler binary text is separately 32,551 bytes (cursor) and 41,316
 bytes (pptoken); not a generated-code-size measurement. PA33/34's mandatory
 per-workload 1.25x GCC instruction gate remains due and unmodified; these early
 lexical diagnostic ratios do not certify or waive it.
+
+## Independent final audit controls
+
+The final audit adds standard-derived literal UCN/provenance and outside-literal
+restrictions (52 exact outputs, 35 rejections total), the course-valid CR raw
+string delimiter, stable source ranges/identities, and a bounded renderer control:
+
+```sh
+g++ -std=c++11 -O3 -g -Idev/src student.tests/pa1/render.cpp \
+  dev/src/preprocess/tokens/DebugPPTokenStream.cpp -o "$RALPH_ARTIFACT_DIR/pa1-render"
+"$RALPH_ARTIFACT_DIR/pa1-render"
+```
+
+This explicitly covers 200K binary spelling, buffer-boundary NUL/newline,
+repeated small records, EOF flush, destruction without EOF and exception-unwind
+flush. Run cursor
+and renderer with Clang and GCC ASan/UBSan as well as the required course checks.
+The final architecture/proof/measurement ledger is `pa1/audit.md`.
+
+Frozen paired A/B measurements can interleave an existing label's binaries with
+the current build and hosts on the same inputs:
+
+```sh
+python3 student.tests/pa1/measure.py "$RALPH_ARTIFACT_DIR/pa1-audit" \
+  --label comparison --against baseline --runs 5
+```
+
+Do not reuse labels or overwrite prior binaries when preserving experiments.
+The manifest now records host driver/frontend hashes and all exact commands.
+`pa1-audit/audit7-*` is the accepted final measurement (including the escape-scan
+UCN provenance fix); `compact-*` measured the out-of-line renderer. Initial
+inline, confirmation and baseline observations are retained, not discarded.
+
+Final audit7: seven paired warm runs, CPU 0, unchanged flags/inputs. Cursor
+instructions/GCC are 1.461x/1.691x/1.493x (declarations/raw/hosted); rendered
+instructions improve 36.57%/19.62%/38.00% from frozen baseline. Text is
+33,420/38,443 bytes (cursor/tool), versus baseline 32,551/41,316. Final wall/RSS,
+cycles/IPC, every range, host/reference comparisons and the shared-machine hosted
+cycle outliers are recorded in `pa1/audit.md` and `pa1-audit/accepted-summary.txt`.
+The earlier table above is preserved historical evidence, not final acceptance.
