@@ -6,8 +6,9 @@ This specification governs a self-contained Linux x86-64 C++11 compiler.
 Correctness is mandatory. Performance has four dimensions: compiler latency,
 compiler peak memory, generated-program runtime and generated code size.
 Preserve fast frontend processing while making lowering and optimization
-produce efficient executables. A smaller IR alone is not evidence of faster
-code; runtime gains must justify added compiler work and code growth.
+produce efficient executables, targeting GCC runtime parity on fixed workloads.
+Measure runtime, compilation cost and size separately; fewer IR instructions
+are not proof of faster code.
 
 This run evaluates performance beyond the course's completion tests, and every
 required behavior is implemented in this compiler's own frontend, semantic
@@ -25,7 +26,7 @@ immutable source buffers
     -> integrated parser and semantic construction
     -> canonical typed semantic graph
     -> direct typed LowIR and bounded optimization
-    -> per-function machine IR, selection and allocation
+    -> per-function machine IR, selection, allocation and final cleanup
     -> direct ELF object writer
 ```
 
@@ -98,9 +99,9 @@ MUST NOT force the object compiler to construct unused representations.
 - Environments MUST be immutable parent-linked frames or compact overlays; do
   not copy all visible bindings at each instantiation level.
 - Transform and recheck dependent nodes only; reuse non-dependent nodes and
-  facts. Demand only language-required declarations, definitions, layouts,
-  initializers, support objects and bodies; only reachable definitions are
-  instantiated, mangled, lowered and emitted.
+  facts. Track semantic demand separately from emission reachability: perform
+  required validation even for un-emitted code, preserve ABI/export roots, and
+  avoid lowering or emitting unrelated definitions.
 - Parsing, substitution, validation, class completion and emission are distinct
   operations. One MUST NOT invoke a broader one merely because they share
   storage; completing a class must not instantiate unrelated member bodies.
@@ -136,9 +137,13 @@ MUST NOT force the object compiler to construct unused representations.
 
 ## 7. Optimization and native code
 
-- Optimize executable work: redundant computation and memory traffic, calls,
-  branches, loop work, spills/reloads and needless frame or code growth. Use the
-  fixtures for legality and outcomes; do not copy the reference's pass order.
+- Optimize executable work: computation, memory traffic, calls, loops and
+  spill/frame costs. From PA24, model uses/defs, call clobbers and revisable
+  value locations; at PA26 add precise exceptional edges and unwind constraints.
+  Avoid designs that force whole-function spilling around a call or handler.
+  PA32 must preserve useful alias/effect facts across serialized LowIR for PA33;
+  audit final copies, frames and spills after allocation. Fixtures establish
+  outcomes, not a required pass order or allocator.
 - Every transform MUST distinguish legality, profitability and work budget.
   Preserve observable effects, aliasing/lifetimes, integer and floating
   semantics, ABI, exceptions and meaningful debug locations. Without a proof or
@@ -148,14 +153,15 @@ MUST NOT force the object compiler to construct unused representations.
   allocation improvements; O3 permits targeted inlining, specialization,
   versioning or unrolling when expected runtime benefit justifies the cost. No
   level licenses unbounded search or growth or needs a pass whose goal is met.
-- Start with few high-value passes. Document each pass's scope, complexity,
-  invalidations, work limit and code-growth limit; bounds are pipeline-wide too.
+- Evaluate inlining/dataflow, placement across calls/loops/EH, and final machine
+  cleanup as separate capability families, including their interactions. State
+  scope, invalidations, pipeline work/growth budgets and measured fallback coverage.
 - Fixed-point transforms MUST use dirty instruction/block worklists and a
   progress measure rather than rescanning after each local change. Cache
   analyses at their natural unit and invalidate only affected facts.
-- Selection and encoding MUST be linear in input/output; the ordinary allocator
-  MUST be linear or near-linear. Allocation quality must weigh liveness, loop
-  reuse, call clobbers and rematerialization, not merely allocator runtime.
+- Encoding and O0 selection/allocation MUST be linear or near-linear. Optimized
+  selection/allocation may use capped higher-cost analysis with measured benefit.
+  Evaluate execution cost and memory traffic, not a prescribed placement scheme.
 - Use compact per-function MIR and direct ELF emission; do not emit/reparse
   assembly or invoke an external assembler. MIR views MUST describe the facts
   actually consumed by encoding, frame construction and unwind emission.
@@ -196,7 +202,7 @@ MUST NOT force the object compiler to construct unused representations.
 - Expose low-overhead phase times, peak memory and work counters (allocations,
   candidates, specialization transitions, cache hits, worklist items, functions
   lowered versus emitted, IR sizes). Telemetry never changes semantics; a
-  counter growing faster than its governing input is a defect.
+  counter exceeding its declared work model or budget is a defect.
 - Maintain fixed compiler and executable benchmarks (template-heavy frontend
   work, hosted headers, loops, calls, memory, floating point, self-hosting)
   whose inputs and checked results prevent timing constant-folded or dead work.
@@ -215,7 +221,8 @@ MUST NOT force the object compiler to construct unused representations.
   large multiple of the host, dominates suite time or emits disproportionate
   text, record its PMU counts, phase times, work counters and `perf record`
   sampled hot functions, then fix the owning algorithm or data structure.
-  Code reading is no substitute.
+  Compare equivalent supported work with GCC/Clang and available references;
+  use profiles and generated code to distinguish missing capabilities from tuning.
 
 ### Hardware-counter measurement protocol
 
@@ -273,9 +280,21 @@ and [perf record](https://man7.org/linux/man-pages/man1/perf-record.1.html).
   mandated limits from self-selected targets. Harness timeouts and memory caps
   are hang guards, not budgets; §§1-9 are mandatory architecture, and a
   violation is a current-stage defect even when every test passes.
-- Compare semantically equivalent correct implementations. Resolve avoidable
-  regressions and remove unprofitable optional transforms. Necessary semantic
-  costs and later-stage constraints are documented, not new gates or excuses.
+- Activate supplemental checks at their owning PA and retain them thereafter.
+  Use behavior and broad cost envelopes; qualify portable C++ cases with GCC
+  and Clang. No exact register, opcode sequence, pass, or allocator is required.
+  Statistical performance checks report unresolved measurements as inconclusive.
+- At PA33 final acceptance, and again at PA34, every workload in
+  `student.tests/backend-quality/check_instructions.py` MUST retire at most
+  1.25 times GCC user-mode instructions with matching O2/O3 flags and full
+  optimization pipelines. Follow its fixed paired-run protocol; missing or
+  unstable measurements are non-passing. This run-specific supplement does not
+  change the course contract. Earlier PAs measure diagnostically. Neither early
+  stopping nor prior-plan target reclassification waives this per-workload limit;
+  PA34 whole-self runtime remains a separate measurement.
+- Independent audits assess stage-due capabilities beyond these quality floors.
+  Early stopping requires representative coverage of each major remaining
+  capability family; local failed experiments do not establish that coverage.
 - A numeric target that a prior plan invented may be reclassified without
   approval, with evidence and rationale. Preserve all measurements; historical
   misses do not fail a corrected implementation. Inherited plans do not override
@@ -311,7 +330,8 @@ roundtrip, global retry, reconstruction or hot per-node allocation fails.
 - Hardware counters, phase timers and work counters consulted on the slowest
   workload, with every trigger sampled, attributed and resolved (§9).
 
-Trace an optimization fact through lowering, legality, profitability,
-invalidation and encoding; check pipeline budgets, fallbacks, ABI/debug and
-spill/loop costs. Judge compiler and executable benchmarks against the host:
-faster compilation must not hide worse code, nor runtime gains unbounded work.
+Trace facts through legality, profitability, invalidation and encoding. At
+PA24/26 inspect placement and call/EH constraints; at PA32 inlining and memory
+dataflow; at PA33 cross-block allocation, scheduling and final cleanup; at PA34
+whole-self runtime. Cite representative outcomes and compare alternatives;
+passing fixtures alone cannot certify architecture or optimal performance.
