@@ -42,7 +42,7 @@ Last reviewed commit: 4ffe018923d794748dddd398aede178ade3aeb60
 - Artifact root `/home/vishvananda/work/private/v4sol61strands/artifacts/`:
   `pa2-perf/accepted-{manifest,observations,summary,parity}.json`, all raw perf,
   time/telemetry and cycle profiles. Detailed medians/ranges and host comparisons
-  in `student.tests/pa2/README.md`. CPU 0, Xeon Platinum 8375C, warmup + 3
+  in `student.tests/pa2/README.md`. CPU 0, Xeon E5-2696 v4 @ 2.20GHz, warmup + 3
   interleaved runs, grouped instructions/cycles:u, 100% counter running.
 - Five 4–8MB workloads: declarations/raw/hosted/literals/concat typed cursor
   median latency 0.41/0.16/0.36/0.23/0.14s, RSS 15.6/19.1/14.9/11.6/11.6MB;
