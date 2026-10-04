@@ -34,8 +34,8 @@ bool word_operator(const std::string& s) {
 [[noreturn]] void invalid(const char* message) { throw std::runtime_error(message); }
 }
 
-Lexer::Lexer(const SourceBuffer& source, IdentifierTable& identifiers)
-    : source_(source), identifiers_(identifiers) {
+Lexer::Lexer(const SourceBuffer& source, IdentifierTable& identifiers, LexerOptions options)
+    : source_(source), identifiers_(identifiers), options_(options) {
     metrics_.physical_bytes = source.bytes.size();
     if (source.bytes.compare(0, 3, "\xEF\xBB\xBF") == 0) physical_ = 3;
 }
@@ -153,35 +153,48 @@ bool Lexer::matches(const char* text) {
     return true;
 }
 void Lexer::ordinary_literal(int quote) {
-    take(); // opening quote
+    take();
     std::size_t characters = 0;
     for (;;) {
         int c = peek().value;
         if (peek().universal) {
-            ++characters; take(true, true); continue;
+            ++characters;
+            if (options_.collect_literal_elements) literal_elements_.push_back({static_cast<std::uint32_t>(c), false, false});
+            take(true, true); continue;
         }
         if (c == -1 || c == '\n') invalid("unterminated ordinary literal");
         if (c == quote) { take(); break; }
-        ++characters;
-        take();
-        if (c != '\\') continue;
+        ++characters; take();
+        if (c != '\\') {
+            if (options_.collect_literal_elements) literal_elements_.push_back({static_cast<std::uint32_t>(c), false, false});
+            continue;
+        }
         c = peek().value;
         if (c == -1 || c == '\n') invalid("unterminated escape");
-        if (c > 0 && c < 128 && std::strchr("'\"?\\abfnrtv", c)) { take(); continue; }
-        if (c >= '0' && c <= '7') {
-            for (unsigned i = 0; i < 3 && !peek().universal
-                 && peek().value >= '0' && peek().value <= '7'; ++i) take();
-            continue;
+        const char* names = "'\"?\\abfnrtv";
+        const char* values = "'\"?\\\a\b\f\n\r\t\v";
+        const char* simple = c > 0 && c < 128 ? std::strchr(names, c) : nullptr;
+        if (simple) {
+            if (options_.collect_literal_elements) literal_elements_.push_back({static_cast<std::uint32_t>(values[simple-names]), false, false});
+            take(); continue;
         }
+        unsigned base = 8, limit = 3;
         if (c == 'x') {
-            take();
+            take(); base = 16; limit = ~0u;
             if (peek().universal || hex(peek().value) < 0) invalid("hex escape has no digits");
-            while (!peek().universal && hex(peek().value) >= 0) take();
-            continue;
+        } else if (c < '0' || c > '7') invalid("invalid escape sequence");
+        std::uint32_t value = 0;
+        bool overflow = false;
+        for (unsigned i = 0; i < limit && !peek().universal; ++i) {
+            int digit_value = hex(peek().value);
+            if (digit_value < 0 || static_cast<unsigned>(digit_value) >= base) break;
+            if (value > (UINT32_MAX-static_cast<unsigned>(digit_value))/base) overflow = true;
+            value = value*base + digit_value;
+            take();
         }
-        invalid("invalid escape sequence");
+        if (options_.collect_literal_elements) literal_elements_.push_back({value, true, overflow});
     }
-    if (quote == '\'' && !characters) invalid("empty character literal");
+    if (quote == '\'' && !characters && !options_.convert_empty_character) invalid("empty character literal");
 }
 void Lexer::raw_literal() {
     Character quote = take();
@@ -220,6 +233,7 @@ void Lexer::raw_literal() {
                 return;
             }
         }
+        if (options_.collect_literal_elements) literal_elements_.push_back({static_cast<std::uint32_t>(c.value), false, false});
         advance(c.end); ++metrics_.decoded_characters;
     }
 }
@@ -232,7 +246,7 @@ Token Lexer::finish(TokenKind kind, const Character& start, IdentifierId id) {
     return Token{kind, {start.location.offset, consumed_end_}, start.location, id};
 }
 Token Lexer::next() {
-    spelling_.clear();
+    spelling_.clear(); literal_elements_.clear(); literal_end_ = 0;
     const Character start = peek();
     int c = start.value;
     if (c == -1) {
@@ -285,7 +299,7 @@ Token Lexer::next() {
             int quote = prefix[length - 1];
             for (std::size_t i = 1; i < length; ++i) take();
             if (raw) raw_literal(); else ordinary_literal(quote);
-            std::size_t before = spelling_.size(); suffix();
+            std::size_t before = spelling_.size(); literal_end_ = before; suffix();
             bool ud = spelling_.size() != before;
             return finish(quote == '\'' ? (ud ? TokenKind::ud_character : TokenKind::character)
                 : (ud ? TokenKind::ud_string : TokenKind::string), start);

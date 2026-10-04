@@ -58,6 +58,9 @@ public:
     std::size_t slabs() const { return slabs_.size(); }
 };
 
+// Literal elements retain numeric-escape provenance for phase 6.
+struct LiteralElement { std::uint32_t value; bool numeric, overflow; };
+
 struct LexerMetrics {
     std::size_t physical_bytes = 0, decoded_characters = 0;
     std::size_t tokens = 0, spelling_bytes = 0, raw_candidates = 0;
@@ -65,12 +68,21 @@ struct LexerMetrics {
 
 // Pull tokens, never a complete owning token vector. spelling() is borrowed
 // until next(); identifiers retain stable identity in the caller-owned table.
+struct LexerOptions {
+    bool collect_literal_elements = false;
+    // PA2 converts a closed empty character token to invalid and continues;
+    // PA1 still reports a phase-3 error, preserving its lexical contract.
+    bool convert_empty_character = false;
+};
+
 class Lexer {
 public:
-    Lexer(const SourceBuffer& source, IdentifierTable& identifiers);
+    Lexer(const SourceBuffer& source, IdentifierTable& identifiers, LexerOptions options = LexerOptions());
     Token next();
     const std::string& spelling() const { return spelling_; }
     const LexerMetrics& metrics() const { return metrics_; }
+    const std::vector<LiteralElement>& literal_elements() const { return literal_elements_; }
+    std::size_t literal_end() const { return literal_end_; }
 private:
     struct Character {
         int value;
@@ -89,6 +101,9 @@ private:
     Directive directive_ = Directive::start;
     std::string spelling_;
     LexerMetrics metrics_;
+    LexerOptions options_;
+    std::vector<LiteralElement> literal_elements_;
+    std::size_t literal_end_ = 0;
     Character decode(std::size_t offset) const;
     Character phase1(std::size_t offset) const;
     void advance(std::size_t end);
