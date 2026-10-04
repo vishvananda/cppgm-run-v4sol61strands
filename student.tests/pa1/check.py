@@ -44,6 +44,7 @@ cases = [
     (b'\\u0040', [O('@'), NL, EOF]),
     (b'\\u{bad}', [O('\\'), I('u'), P('{'), I('bad'), P('}'), NL, EOF]),
     (b'"\\\\u{"', [S('"\\\\u{"'), NL, EOF]),
+    (b'"\\\\UFFFFFFFF"', [S('"\\\\UFFFFFFFF"'), NL, EOF]),
     ('\u0300a\u0300'.encode(), [O('\u0300'), I('a\u0300'), NL, EOF]),
     ('\u00a7\u00a8\U000efffd\U000efffe'.encode(),
      [O('\u00a7'), I('\u00a8\U000efffd'), O('\U000efffe'), NL, EOF]),

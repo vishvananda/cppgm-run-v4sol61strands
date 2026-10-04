@@ -107,7 +107,13 @@ Lexer::Character Lexer::translated() {
         advance(c.end);
         ++metrics_.decoded_characters;
         if (c.value == '\\') {
+            // A speculative following UCN sees this backslash's logical escape
+            // parity. Otherwise an escaped backslash can decode (or reject) a
+            // UCN before the first backslash is published to the cursor.
+            const bool previous_parity = slash_odd_;
+            slash_odd_ = !previous_parity;
             Character following = phase1(physical_);
+            slash_odd_ = previous_parity;
             if (following.value == '\n') {
                 advance(following.end); ++metrics_.decoded_characters;
                 ended_splice_ = true;
