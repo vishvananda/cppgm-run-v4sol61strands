@@ -259,7 +259,9 @@ Token Lexer::next() {
         take(false); directive_ = Directive::start;
         return finish(TokenKind::newline, start);
     }
-    if (space(c) || matches("//") || matches("/*")) {
+    // Comments require '/', so avoid two grammar probes on every identifier,
+    // number and literal. This filter cannot change maximal munch or phases 1/2.
+    if (space(c) || (c == '/' && (matches("//") || matches("/*")))) {
         do {
             if (space(peek().value)) { take(false); continue; }
             if (matches("//")) {
@@ -351,7 +353,7 @@ Token Lexer::next() {
         return finish(TokenKind::number, start);
     }
     // The sole C++11 maximal-munch exception ([lex.pptoken]/3).
-    if (matches("<::") && peek(3).value != ':' && peek(3).value != '>') {
+    if (c == '<' && matches("<::") && peek(3).value != ':' && peek(3).value != '>') {
         take(); return finish(TokenKind::punctuator, start);
     }
     // Dispatch by first character before checking the fixed grammar inventory.

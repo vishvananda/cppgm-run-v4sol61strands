@@ -145,6 +145,8 @@ PostToken PostCursor::next() {
         result.width = width(encoding(s)); result.elements = 1;
         sequence_units_.clear(); unit(sequence_units_, 0, result.width);
         result.units = sequence_units_.data();
+        ++metrics_.string_sequences;
+        metrics_.converted_bytes += result.width;
         if (render_source_) result.source = s.substr(0, lexer_.literal_end());
         ready_ = false; after_operator_ = false; ++metrics_.tokens; return result;
     }

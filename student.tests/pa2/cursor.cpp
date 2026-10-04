@@ -44,6 +44,9 @@ int main() {
     auto suffix = split_cursor.next();
     assert(suffix.kind == PostKind::identifier && split_ids.spelling(suffix.identifier).equals("_π"));
     assert(suffix.range.begin == 12 && suffix.location.offset == 12 && suffix.location.line == 2);
+    assert(split_cursor.metrics().string_sequences == 1);
+    assert(split_cursor.metrics().converted_bytes == 1);
+    assert(split_cursor.metrics().literal_elements == 0);
     SourceBuffer floating_source("1.25f 1.25 1.25L");
     IdentifierTable floating_ids;
     Lexer floating_lexer(floating_source, floating_ids, options);
