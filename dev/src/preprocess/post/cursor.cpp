@@ -53,7 +53,7 @@ bool encode(const LiteralElement& element, Encoding e, std::vector<unsigned char
 bool is_string(TokenKind kind) { return kind == TokenKind::string || kind == TokenKind::ud_string; }
 }
 void PostCursor::advance() {
-    do { current_ = lexer_.next(); } while (current_.kind == TokenKind::whitespace || current_.kind == TokenKind::newline);
+    do { current_ = lexer_.next(); } while (current_.kind == TokenKind::whitespace || (!controlling_ && current_.kind == TokenKind::newline));
     ready_ = true;
 }
 void PostCursor::character(PostToken& result) {
@@ -150,12 +150,19 @@ PostToken PostCursor::next() {
         if (render_source_) result.source = s.substr(0, lexer_.literal_end());
         ready_ = false; after_operator_ = false; ++metrics_.tokens; return result;
     }
-    if (is_string(current_.kind)) { strings(result); after_operator_ = false; }
+    if (is_string(current_.kind) && !controlling_) { strings(result); after_operator_ = false; }
     else {
         if (render_source_) result.source = s;
         switch (current_.kind) {
         case TokenKind::eof: result.kind = PostKind::eof; break;
+        case TokenKind::newline: result.kind = PostKind::newline; break;
         case TokenKind::identifier:
+            if (controlling_) {
+                result.kind = PostKind::identifier; result.identifier = current_.identifier;
+                break;
+            }
+            // Normal post-tokenization classifies keywords.
+            // fall through
         case TokenKind::punctuator:
             if (classify_simple(s, result.simple)) result.kind = PostKind::simple;
             else if (current_.kind == TokenKind::identifier) {

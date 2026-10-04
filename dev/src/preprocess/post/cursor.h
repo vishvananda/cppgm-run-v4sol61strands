@@ -10,7 +10,7 @@ struct PostMetrics {
 class PostCursor {
     Lexer& lexer_;
     IdentifierTable& identifiers_;
-    bool render_source_, ready_ = false, after_operator_ = false;
+    bool render_source_, controlling_, ready_ = false, after_operator_ = false;
     Token current_;
     IdentifierId pending_identifier_ = 0;
     SourceRange pending_range_ = {0, 0};
@@ -23,8 +23,8 @@ class PostCursor {
     void strings(PostToken& result);
     void character(PostToken& result);
 public:
-    PostCursor(Lexer& lexer, IdentifierTable& identifiers, bool render_source = false)
-        : lexer_(lexer), identifiers_(identifiers), render_source_(render_source) {}
+    PostCursor(Lexer& lexer, IdentifierTable& identifiers, bool render_source = false, bool controlling = false)
+        : lexer_(lexer), identifiers_(identifiers), render_source_(render_source), controlling_(controlling) {}
     PostToken next();
     const PostMetrics& metrics() const { return metrics_; }
 };
