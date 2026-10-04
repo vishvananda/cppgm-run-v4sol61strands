@@ -1,5 +1,30 @@
 # PA2 personal controls and performance evidence
 
+## Independent final audit controls
+
+Final architecture/capability review and measurement interpretation live in
+`pa2/audit.md`, `pa2/performance.md` and the consolidated `pa2/plan.md`.
+The accepted measurements below are a preserved **pre-audit historical snapshot**,
+not the final signoff numbers. No raw observations have been removed.
+
+```sh
+python3 student.tests/pa2/audit_check.py
+python3 student.tests/pa2/audit_measure.py "$RALPH_ARTIFACT_DIR/pa2-audit" \
+  --label slowest-signoff --tool-label audit-signoff
+```
+
+`audit_check.py` independently adds 300 seeded encoding/UD families, 150 floating
+byte cases, 12 prefix conflicts with recovery, 5 raw/provenance cases and three
+unbounded UD numerics. Portable payloads execute under GCC and Clang; exact
+reference comparisons remain separate from independent encoding/arithmetic
+oracles. `PA2_TOOL` can select a Clang-built or sanitizer-built implementation.
+The slowest-fixture diagnostic requires the frozen tools built by `measure.py`
+with the matching label. It preserves expected host rejection diagnostics,
+primary simultaneous counters and timing; a rejected host is not equivalent work.
+The phase-6 typed cursor test also checks split literal-operator sequence counters.
+
+## Implementation controls and historical evidence
+
 Explicit validation (not fixture discovery):
 
 ```sh
