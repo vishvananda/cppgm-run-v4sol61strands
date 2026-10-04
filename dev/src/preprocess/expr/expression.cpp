@@ -72,7 +72,7 @@ std::uint64_t binary(SimpleKind op, PPValue a, PPValue b) {
 }
 ControllingExpression::ControllingExpression(PostCursor& cursor, IdentifierTable& identifiers,
     DefinedQuery defined, void* context, bool telemetry)
-    : cursor_(cursor), identifiers_(identifiers), defined_(defined), context_(context),
+    : cursor_(cursor), defined_(defined), context_(context),
       telemetry_(telemetry), true_(identifiers.intern("true")),
       defined_id_(identifiers.intern("defined")) {
     advance();
@@ -114,7 +114,7 @@ void ControllingExpression::reduce() {
 void ControllingExpression::reduce_before(unsigned p) {
     while (!operators_.empty() && operators_.back().precedence >= p) reduce();
 }
-bool ControllingExpression::parse() {
+void ControllingExpression::parse() {
     bool operand = true;
     while (token_.kind != PostKind::newline && token_.kind != PostKind::eof) {
         if (operand) {
@@ -174,7 +174,6 @@ bool ControllingExpression::parse() {
     if (operand) throw InvalidExpression();
     while (!operators_.empty()) reduce();
     if (values_.size() != 1) throw InvalidExpression();
-    return true;
 }
 PPValue ControllingExpression::evaluate() {
     frames_.push_back({values_[0], 0});

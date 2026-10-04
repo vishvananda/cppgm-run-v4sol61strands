@@ -25,7 +25,6 @@ class ControllingExpression {
     };
     struct Frame { std::size_t node; unsigned state; };
     PostCursor& cursor_;
-    IdentifierTable& identifiers_;
     DefinedQuery defined_;
     void* context_;
     bool telemetry_;
@@ -41,7 +40,7 @@ class ControllingExpression {
     void reduce_before(unsigned precedence);
     void leaf(PPValue value);
     PPValue literal() const;
-    bool parse();
+    void parse();
     PPValue evaluate();
 public:
     ControllingExpression(PostCursor& cursor, IdentifierTable& identifiers,

@@ -154,6 +154,38 @@ case SimpleKind::OP_ARROW: return "OP_ARROW";
 } return "?";
 }
 bool classify_simple(const std::string& spelling, SimpleKind& kind) {
+ // Single-character grammar terminals are the dominant expression/header
+ // path. Classify directly without hashing; the immutable bounded inventory
+ // below still handles multicharacter terminals and keyword aliases.
+ if (spelling.size() == 1) {
+  switch (spelling[0]) {
+  case '{': kind = SimpleKind::OP_LBRACE; return true;
+  case '}': kind = SimpleKind::OP_RBRACE; return true;
+  case '[': kind = SimpleKind::OP_LSQUARE; return true;
+  case ']': kind = SimpleKind::OP_RSQUARE; return true;
+  case '(': kind = SimpleKind::OP_LPAREN; return true;
+  case ')': kind = SimpleKind::OP_RPAREN; return true;
+  case '|': kind = SimpleKind::OP_BOR; return true;
+  case '^': kind = SimpleKind::OP_XOR; return true;
+  case '~': kind = SimpleKind::OP_COMPL; return true;
+  case '&': kind = SimpleKind::OP_AMP; return true;
+  case '!': kind = SimpleKind::OP_LNOT; return true;
+  case ';': kind = SimpleKind::OP_SEMICOLON; return true;
+  case ':': kind = SimpleKind::OP_COLON; return true;
+  case '?': kind = SimpleKind::OP_QMARK; return true;
+  case '.': kind = SimpleKind::OP_DOT; return true;
+  case '+': kind = SimpleKind::OP_PLUS; return true;
+  case '-': kind = SimpleKind::OP_MINUS; return true;
+  case '*': kind = SimpleKind::OP_STAR; return true;
+  case '/': kind = SimpleKind::OP_DIV; return true;
+  case '%': kind = SimpleKind::OP_MOD; return true;
+  case '=': kind = SimpleKind::OP_ASS; return true;
+  case '<': kind = SimpleKind::OP_LT; return true;
+  case '>': kind = SimpleKind::OP_GT; return true;
+  case ',': kind = SimpleKind::OP_COMMA; return true;
+  default: return false;
+  }
+ }
  static const std::unordered_map<std::string, SimpleKind> table = {
 {"alignas", SimpleKind::KW_ALIGNAS},
 {"alignof", SimpleKind::KW_ALIGNOF},

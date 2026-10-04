@@ -174,7 +174,7 @@ enum class SimpleKind
 
 
 enum class PostKind : unsigned char { invalid, simple, identifier, scalar, array,
-    ud_integer, ud_floating, ud_character, ud_string, newline, eof };
+    ud_integer, ud_floating, ud_character, ud_string, eof, newline };
 struct PostToken {
     PostKind kind = PostKind::invalid;
     SourceRange range = {0, 0};
