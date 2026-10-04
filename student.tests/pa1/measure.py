@@ -37,13 +37,16 @@ if args.prepare:
                       + ' ??= \\u03c0 \\n)1234567890123456";\n')
     hosted = A / 'hosted-original.cpp'
     hosted.write_text('#include <vector>\n#include <string>\n#include <tuple>\n#include <algorithm>\n'
-                      'std::vector<std::tuple<std::string,int>> values;\n')
+                      'std::vector<std::tuple<std::string,int>> values;\n'
+                      + ''.join(f'int hosted{n}(const std::vector<int>& v) {{ return v.size() + {n}; }}\n'
+                                for n in range(80000)))
     with (A / 'hosted.cpp').open('wb') as out:
         run(['g++', '-std=c++11', '-E', '-P', hosted], stdout=out)
 
 # Freeze optimized symbols for profiling, plus the exact tool wrapper being used.
 flags = ['-std=c++11', '-O3', '-g', '-I' + str(ROOT / 'dev/src')]
-sources = [ROOT / 'dev/src/preprocess/lex/lexer.cpp', ROOT / 'dev/src/preprocess/lex/unicode.cpp']
+sources = [ROOT / 'dev/src/preprocess/lex/lexer.cpp', ROOT / 'dev/src/preprocess/lex/unicode.cpp',
+           ROOT / 'dev/src/preprocess/lex/identifiers.cpp']
 cursor = A / ('cursor-' + args.label)
 tool = A / ('pptoken-' + args.label)
 run(['g++', *flags, ROOT / 'student.tests/pa1/lex_bench.cpp', *sources, '-o', cursor])

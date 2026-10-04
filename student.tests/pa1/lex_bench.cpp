@@ -23,7 +23,7 @@ int main() {
     const auto& m = lexer.metrics();
     std::cerr << "checksum=" << checksum << " bytes=" << m.physical_bytes
               << " tokens=" << m.tokens << " decoded=" << m.decoded_characters
-              << " names=" << ids.size() << " raw_candidates=" << m.raw_candidates
+              << " names=" << ids.size() << " intern_probes=" << ids.probes() << " spelling_slabs=" << ids.slabs() << " raw_candidates=" << m.raw_candidates
               << " read_us=" << std::chrono::duration_cast<std::chrono::microseconds>(loaded-begin).count()
               << " lex_us=" << std::chrono::duration_cast<std::chrono::microseconds>(done-loaded).count()
               << " rss_kb=" << usage.ru_maxrss << '\n';

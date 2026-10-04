@@ -27,10 +27,14 @@ int main() {
     assert(cursor.next().kind == TokenKind::newline);
     Token eof = cursor.next();
     assert(eof.kind == TokenKind::eof && eof.range.begin == source.bytes.size());
-    const std::string* retained = &ids.spelling(first.identifier);
+    const char* retained = ids.spelling(first.identifier).data;
     for (unsigned n = 0; n < 100000; ++n) ids.intern("unique" + std::to_string(n));
-    assert(retained == &ids.spelling(first.identifier) && *retained == "alphabeta");
+    assert(retained == ids.spelling(first.identifier).data && ids.spelling(first.identifier).equals("alphabeta"));
     assert(ids.intern("α") == greek.identifier);
+    assert(ids.slabs() < 100 && ids.probes() < 1000000);
+    std::string huge(100000, 'x');
+    IdentifierId huge_id = ids.intern(huge);
+    assert(ids.spelling(huge_id).equals(huge) && ids.intern(huge) == huge_id);
 
     // Each input byte has constant translation work; repeated identifiers do not
     // grow the table, and cursor storage is independent of token count.

@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
-#include <unordered_map>
+#include <memory>
 #include <vector>
 #include <utility>
 #include "preprocess/lex/unicode.h"
@@ -32,13 +32,30 @@ struct Token {
     IdentifierId identifier;
 };
 
+struct IdentifierSpelling {
+    const char* data;
+    std::size_t size;
+    bool equals(const std::string& spelling) const;
+};
+
+// Dense open-addressed IDs; spelling bytes have TU-owned slab lifetime. Rehash
+// moves compact IDs only, never spelling bytes or one heap node per name.
 class IdentifierTable {
-    std::unordered_map<std::string, IdentifierId> ids_;
-    std::vector<const std::string*> spellings_;
+    struct Entry { IdentifierSpelling spelling; std::uint64_t hash; };
+    std::vector<IdentifierId> slots_;
+    std::vector<Entry> entries_;
+    std::vector<std::unique_ptr<char[]>> slabs_;
+    std::size_t slab_used_ = 0, slab_capacity_ = 0, probes_ = 0;
+    void grow();
 public:
+    IdentifierTable() = default;
+    IdentifierTable(const IdentifierTable&) = delete;
+    IdentifierTable& operator=(const IdentifierTable&) = delete;
     IdentifierId intern(const std::string& spelling);
-    const std::string& spelling(IdentifierId id) const;
-    std::size_t size() const { return spellings_.size(); }
+    IdentifierSpelling spelling(IdentifierId id) const;
+    std::size_t size() const { return entries_.size(); }
+    std::size_t probes() const { return probes_; }
+    std::size_t slabs() const { return slabs_.size(); }
 };
 
 struct LexerMetrics {

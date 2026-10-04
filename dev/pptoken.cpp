@@ -30,7 +30,8 @@ int main(int, char**) {
             const auto& m = lexer.metrics();
             std::cerr << "lexer bytes=" << m.physical_bytes << " decoded=" << m.decoded_characters
                       << " tokens=" << m.tokens << " spelling_bytes=" << m.spelling_bytes
-                      << " identifiers=" << identifiers.size() << " raw_candidates=" << m.raw_candidates
+                      << " identifiers=" << identifiers.size() << " intern_probes=" << identifiers.probes()
+                      << " spelling_slabs=" << identifiers.slabs() << " raw_candidates=" << m.raw_candidates
                       << " read_us=" << std::chrono::duration_cast<std::chrono::microseconds>(loaded-begin).count()
                       << " lex_render_us=" << std::chrono::duration_cast<std::chrono::microseconds>(end-loaded).count()
                       << " peak_rss_kb=" << usage.ru_maxrss << '\n';

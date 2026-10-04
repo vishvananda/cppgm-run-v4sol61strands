@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cstring>
-#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -33,20 +32,6 @@ bool word_operator(const std::string& s) {
     return false;
 }
 [[noreturn]] void invalid(const char* message) { throw std::runtime_error(message); }
-}
-
-IdentifierId IdentifierTable::intern(const std::string& s) {
-    auto found = ids_.find(s);
-    if (found != ids_.end()) return found->second;
-    if (spellings_.size() >= std::numeric_limits<IdentifierId>::max())
-        invalid("too many identifiers");
-    IdentifierId id = static_cast<IdentifierId>(spellings_.size() + 1);
-    auto inserted = ids_.emplace(s, id);
-    spellings_.push_back(&inserted.first->first); // unordered_map references are stable.
-    return id;
-}
-const std::string& IdentifierTable::spelling(IdentifierId id) const {
-    return *spellings_.at(id - 1);
 }
 
 Lexer::Lexer(const SourceBuffer& source, IdentifierTable& identifiers)
