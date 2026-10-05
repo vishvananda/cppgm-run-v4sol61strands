@@ -1,6 +1,7 @@
 // Student-facing scaffold for the PA5+ `cppgm++` binary.
 
 #include "support/not_implemented.h"
+#include "syntax/tree.h"
 #include "support/tool_help_text.h"
 
 #include <cstdlib>
@@ -381,8 +382,18 @@ int run_unimplemented_mode(const char * feature,
 
 int run_emit_ast_mode(const vector<string> & args)
 {
-  parse_source_output_invocation(args, false);
-  return run_unimplemented_mode("--emit-ast", "PA5");
+  vector<string> options=args;
+  bool telemetry=false;
+  for (auto i=options.begin();i!=options.end();) {
+    if (*i=="--telemetry") { telemetry=true; i=options.erase(i); } else ++i;
+  }
+  parse_source_output_invocation(options, false);
+  string output; vector<string> sources;
+  for (size_t i=0;i<options.size();++i) {
+    if (options[i]=="-o") output=options[++i];
+    else sources.push_back(options[i]);
+  }
+  return cppgm::emit_ast(output, sources, telemetry);
 }
 
 int run_emit_types_mode(const vector<string> & args)
