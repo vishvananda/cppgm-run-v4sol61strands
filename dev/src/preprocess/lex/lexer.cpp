@@ -63,7 +63,7 @@ Lexer::Character Lexer::decode(std::size_t offset) const {
 }
 Lexer::Character Lexer::phase1(std::size_t offset) const {
     Character c = decode(offset);
-    if (c.value == '?' && source_.bytes.size() - offset >= 3
+    if (!options_.generated_token && c.value == '?' && source_.bytes.size() - offset >= 3
         && source_.bytes[offset + 1] == '?') {
         int replacement = trigraph(static_cast<unsigned char>(source_.bytes[offset + 2]));
         if (replacement != -1) { c.value = replacement; c.end = offset + 3; }

@@ -8,7 +8,7 @@ struct PostMetrics {
 };
 // Owns one PP lookahead; literal values come from lexing, not a spelling reparse.
 class PostCursor {
-    Lexer& lexer_;
+    PPSource& lexer_;
     IdentifierTable& identifiers_;
     bool render_source_, controlling_, ready_ = false, after_operator_ = false;
     Token current_;
@@ -23,7 +23,7 @@ class PostCursor {
     void strings(PostToken& result);
     void character(PostToken& result);
 public:
-    PostCursor(Lexer& lexer, IdentifierTable& identifiers, bool render_source = false, bool controlling = false)
+    PostCursor(PPSource& lexer, IdentifierTable& identifiers, bool render_source = false, bool controlling = false)
         : lexer_(lexer), identifiers_(identifiers), render_source_(render_source), controlling_(controlling) {}
     PostToken next();
     const PostMetrics& metrics() const { return metrics_; }

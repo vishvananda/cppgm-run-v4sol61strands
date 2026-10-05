@@ -22,10 +22,11 @@ Last reviewed commit: d257e04fb48b42db12267c2e438ac18dc7dc5e89
   measurable on executables from this stage.
 
 ## Remaining groups
-1. Pull-source adapter and complete macro replacement/diagnostics.
-2. Conditionals, inclusion, locations/predefines, pragmas and integration.
-3. Full tests, repeated host/reference performance controls and independent
-   questions recorded separately below.
+Implemented pull-source adapter, macros/paint/paste/prescan, conditionals,
+inclusion, locations/predefines, pragmas and per-primary reset. PA4 105/105,
+PA1–3 100/100, file audit 36 files; explicit personal portable/30k-chain controls
+pass. Remaining: repeated performance controls, sanitizer/architecture checks,
+then revalidate and record independent questions.
 
 ## Performance evidence
 Pending: freeze stage-supported macro-heavy workloads; warm up and pin host,
@@ -34,7 +35,8 @@ wall/user/system/RSS; compare output equivalence before interpreting costs.
 Generated executable runtime/size: not applicable to token-output PA4.
 
 ## Handoff ledger
-Implementation unfinished: all groups above.
+Implementation unfinished: performance/architecture validation below; no known
+course correctness failures.
 Independent audit questions: whole-stage capability coverage, paint inheritance,
 location provenance through substitution, scaling beyond fixture sizes.
 Boundary: none yet; implement related groups while this ownership supports it.

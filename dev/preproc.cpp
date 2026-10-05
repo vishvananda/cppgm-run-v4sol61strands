@@ -1,99 +1,39 @@
-// (C) 2013 CPPGM Foundation www.cppgm.org.  All rights reserved.
-
-#include <utility>
-#include <sys/stat.h>
-#include <iostream>
-#include <string>
-#include <vector>
-#include <stdexcept>
+// (C) 2013 CPPGM Foundation www.cppgm.org. All rights reserved.
+#include "preprocess/engine/preprocessor.h"
+#include "preprocess/post/cursor.h"
+#include "preprocess/post/render.h"
 #include <fstream>
+#include <iostream>
+#include <stdexcept>
+#include <ctime>
+#include <cstdlib>
+#include <chrono>
 
-using namespace std;
-
-#include "support/not_implemented.h"
-
-// Supplied host helper for pragma-once identity; no syscall implementation
-// is required in this assignment.
-typedef pair<unsigned long long, unsigned long long> PreprocessorFileId;
-
-bool GetPreprocessorFileId(const string& path, PreprocessorFileId& fileid)
-{
-    struct stat info;
-    if (stat(path.c_str(), &info) != 0)
-        return false;
-    fileid = make_pair(static_cast<unsigned long long>(info.st_dev),
-                      static_cast<unsigned long long>(info.st_ino));
-    return true;
-}
-
-bool HasBatchStdinArg(int argc, char** argv)
-{
-	for (int i = 1; i < argc; i++)
-	{
-		if (string(argv[i]) == "--batch-stdin")
-			return true;
-	}
-	return false;
-}
-
-int RunNotImplementedBatchMode()
-{
-	string line;
-	while (getline(cin, line))
-	{
-		(void)line;
-		cout << "EXIT_NOT_IMPLEMENTED" << endl;
-	}
-	return EXIT_SUCCESS;
-}
-
-int main(int argc, char** argv)
-{
-	try
-	{
-		if (HasBatchStdinArg(argc, argv))
-			return RunNotImplementedBatchMode();
-
-		vector<string> args;
-
-		for (int i = 1; i < argc; i++)
-			args.emplace_back(argv[i]);
-
-		if (args.size() < 3 || args[0] != "-o")
-			throw logic_error("invalid usage");
-
-		string outfile = args[1];
-		size_t nsrcfiles = args.size() - 2;
-
-		throw NotImplementedException();
-
-		ofstream out(outfile);
-
-		out << "preproc " << nsrcfiles << endl;
-
-		for (size_t i = 0; i < nsrcfiles; i++)
-		{
-			string srcfile = args[i+2];
-
-			out << "sof " << srcfile << endl;
-
-			ifstream in(srcfile);
-
-			// TODO: implement `preproc` as described in the complete preprocessor assignment
-			out << "not yet implemented" << endl;
-	
-			out << "eof" << endl;
-
-		}
-	}
-	catch (const NotImplementedException& e)
-	{
-		cerr << "ERROR: " << e.what() << endl;
-		return CPPGM_EXIT_NOT_IMPLEMENTED;
-	}
-	catch (exception& e)
-	{
-		cerr << "ERROR: " << e.what() << endl;
-		return EXIT_FAILURE;
-	}
+int main(int argc,char** argv) {
+    try {
+        if(argc<4 || std::string(argv[1])!="-o") throw std::runtime_error("usage: preproc -o output source...");
+        std::time_t now=std::time(nullptr); std::string clock=std::asctime(std::localtime(&now));
+        std::string date=clock.substr(4,7)+clock.substr(20,4), time=clock.substr(11,8);
+        std::ofstream out(argv[2]); if(!out) throw std::runtime_error("cannot open output");
+        out<<"preproc "<<argc-3<<'\n';
+        for(int i=3;i<argc;++i) {
+            auto start=std::chrono::steady_clock::now();
+            cppgm::IdentifierTable ids; cppgm::Preprocessor preprocessor(ids,argv[i],date,time);
+            cppgm::PostCursor tokens(preprocessor,ids,true);
+            out<<"sof "<<argv[i]<<'\n';
+            for (;;) {
+                auto token=tokens.next();
+                if(token.kind==cppgm::PostKind::eof) break;
+                if(token.kind==cppgm::PostKind::invalid) throw std::runtime_error("invalid phase-7 token");
+                cppgm::render_posttoken(out,token,ids);
+            }
+            out<<"eof\n";
+            if(std::getenv("CPPGM_METRICS")) {
+                const auto& m=preprocessor.metrics();
+                std::cerr<<"preproc bytes="<<m.source_bytes<<" source_tokens="<<m.source_tokens<<" expanded="<<m.expanded<<" invocations="<<m.invocations<<" argument_tokens="<<m.argument_tokens<<" pastes="<<m.paste_tokens<<" lookups="<<m.lookups<<" max_pending="<<m.max_pending<<" files="<<m.files<<" seconds="<<std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count()<<'\n';
+            }
+        }
+        if(!out) throw std::runtime_error("output write failed");
+        return EXIT_SUCCESS;
+    } catch(const std::exception& e) {std::cerr<<"ERROR: "<<e.what()<<'\n';return EXIT_FAILURE;}
 }

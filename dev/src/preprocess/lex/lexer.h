@@ -18,6 +18,8 @@ struct SourceBuffer {
 };
 struct SourceLocation {
     std::size_t offset, line, column;
+    // Zero for standalone lexer tools; preprocessing assigns a TU source ID.
+    std::uint32_t file;
 };
 struct SourceRange { std::size_t begin, end; };
 enum class TokenKind : unsigned char {
@@ -73,9 +75,23 @@ struct LexerOptions {
     // PA2 converts a closed empty character token to invalid and continues;
     // PA1 still reports a phase-3 error, preserving its lexical contract.
     bool convert_empty_character = false;
+    // Generated PP tokens have already undergone phases 1/2.
+    bool generated_token = false;
 };
 
-class Lexer {
+// Common structured pull interface; views remain valid until next().
+class PPSource {
+public:
+    virtual ~PPSource() {}
+    virtual Token next() = 0;
+    virtual const std::string& spelling() const = 0;
+    virtual const std::vector<LiteralElement>& literal_elements() const = 0;
+    virtual std::size_t literal_end() const = 0;
+    virtual std::size_t literal_physical_end() const = 0;
+    virtual SourceLocation literal_suffix_location() const = 0;
+};
+
+class Lexer : public PPSource {
 public:
     Lexer(const SourceBuffer& source, IdentifierTable& identifiers, LexerOptions options = LexerOptions());
     Token next();
