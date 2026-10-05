@@ -176,6 +176,7 @@ void SyntaxTree::dump(std::ostream& out, const IdentifierTable& ids, NodeId root
         auto& f=stack.back();
         if (!f.edge) { stack.pop_back(); continue; }
         NodeId c=edges[f.edge].child; f.edge=edges[f.edge].next;
+        if (nodes[c].kind==SyntaxKind::Attribute) continue; // explicit PA5 view omits attributes
         unsigned depth=f.depth+1; print(c,depth); stack.push_back({c,visible_edges(c),depth});
     }
 }

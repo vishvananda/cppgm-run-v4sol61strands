@@ -54,27 +54,37 @@ NodeId SyntaxParser::lambda() {
     }
     tree_.append(result,compound()); leave(); return result;
 }
-void SyntaxParser::attributes() {
+NodeId SyntaxParser::attributes(NodeId owner) {
+    NodeId result=0;
+    auto capture=[&]() {
+        auto t=take();
+        if (t.literal_node) tree_.append(result,t.literal_node);
+        // Attribute tokens are syntax-only; literals still keep their unique
+        // graph owner, typed bytes and source identity even when the view omits them.
+    };
     while (true) {
         // Attributes/alignment are omitted from the PA5 view, but their balanced
         // source extent is consumed once. No owning spelling or grammar replay.
         if (at(SimpleKind::KW_ALIGNAS) || (peek().kind==PostKind::identifier && peek().identifier==attribute_id_)) {
+            if (!result) result=tree_.node(SyntaxKind::Attribute);
             take(); require(SimpleKind::OP_LPAREN); unsigned depth=1;
             while (depth) {
                 if (peek().kind==PostKind::eof) error("attribute closing parenthesis");
                 if (at(SimpleKind::OP_LPAREN)) ++depth;
                 if (at(SimpleKind::OP_RPAREN)) --depth;
-                take();
+                capture();
             }
             continue;
         }
         if (!at(SimpleKind::OP_LSQUARE) || !at(SimpleKind::OP_LSQUARE,1)) break;
+        if (!result) result=tree_.node(SyntaxKind::Attribute);
         take(); take();
         std::vector<SimpleKind> close;
         while (true) {
             if (close.empty() && at(SimpleKind::OP_RSQUARE) && at(SimpleKind::OP_RSQUARE,1)) { take(); take(); break; }
             if (peek().kind==PostKind::eof || peek().kind==PostKind::invalid) error("balanced attribute");
-            auto t=take(); if (t.kind!=PostKind::simple) continue;
+            auto t=take(); if (t.literal_node) tree_.append(result,t.literal_node);
+            if (t.kind!=PostKind::simple) continue;
             if (t.simple==SimpleKind::OP_LPAREN) close.push_back(SimpleKind::OP_RPAREN);
             else if (t.simple==SimpleKind::OP_LBRACE) close.push_back(SimpleKind::OP_RBRACE);
             else if (t.simple==SimpleKind::OP_LSQUARE) close.push_back(SimpleKind::OP_RSQUARE);
@@ -84,5 +94,7 @@ void SyntaxParser::attributes() {
             }
         }
     }
+    if (owner && result) tree_.append(owner,result);
+    return result;
 }
 }

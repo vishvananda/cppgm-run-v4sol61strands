@@ -26,8 +26,8 @@ bool SyntaxParser::special_start() {
     return false;
 }
 NodeId SyntaxParser::class_specifier() {
-    auto key=take(); attributes();
-    NodeId result=tree_.node(SyntaxKind::Class,key.location);
+    auto key=take();
+    NodeId result=tree_.node(SyntaxKind::Class,key.location); attributes(result);
     IdentifierId id=0;
     if (peek().kind==PostKind::identifier) {
         // Class heads are identifiers at this stage. Template-id heads are owned
@@ -35,11 +35,11 @@ NodeId SyntaxParser::class_specifier() {
         auto token=take(); id=token.identifier;
         tree_.nodes[result].payload=SyntaxPayload::identifier; tree_.nodes[result].name=id;
     }
-    tree_.append(result,leaf(SyntaxKind::ClassKey,key)); attributes();
+    tree_.append(result,leaf(SyntaxKind::ClassKey,key)); attributes(result);
     SyntaxScopeId scope=0;
     if (id) {
         auto existing=tree_.scopes[active_.back()].names.find(id);
-        if (existing!=tree_.scopes[active_.back()].names.end() && existing->second.qualifier_category==Category::type) scope=existing->second.qualifier;
+        if (existing && existing->second.qualifier_category==Category::type) scope=existing->second.qualifier;
     }
     if (!scope) scope=create_scope(active_.back());
     bind(id,Category::type,scope); tree_.nodes[result].scope=scope;
@@ -47,7 +47,7 @@ NodeId SyntaxParser::class_specifier() {
     if (eat(SimpleKind::OP_COLON)) {
         NodeId bases=tree_.node(SyntaxKind::BaseClause);
         do {
-            NodeId b=tree_.node(SyntaxKind::Base); attributes();
+            NodeId b=tree_.node(SyntaxKind::Base); attributes(b);
             while (at(SimpleKind::KW_VIRTUAL) || at(SimpleKind::KW_PUBLIC) || at(SimpleKind::KW_PROTECTED) || at(SimpleKind::KW_PRIVATE)) {
                 auto t=take(); tree_.append(b,leaf(t.simple==SimpleKind::KW_VIRTUAL ? SyntaxKind::Virtual : SyntaxKind::Access,t));
             }
@@ -68,7 +68,6 @@ NodeId SyntaxParser::class_specifier() {
     enter(scope); bind(id,Category::type,scope); classes_.push_back({id,scope});
     while (!at(SimpleKind::OP_RBRACE)) {
         if (peek().kind==PostKind::eof) error("closing class brace");
-        attributes();
         if (at(SimpleKind::KW_PUBLIC) || at(SimpleKind::KW_PRIVATE) || at(SimpleKind::KW_PROTECTED)) {
             auto t=take(); require(SimpleKind::OP_COLON); tree_.append(result,leaf(SyntaxKind::Access,t));
         } else tree_.append(result,declaration());
@@ -115,7 +114,7 @@ NodeId SyntaxParser::special_member(NodeId spec, NodeId parsed_name) {
     if (tree_.nodes[n].qualifier_scope) tree_.scopes[active_.back()].parent=tree_.nodes[n].qualifier_scope;
     // Constructor/destructor/conversion names have no return type.
     if (!at(SimpleKind::OP_LPAREN)) error("special member parameter clause");
-    suffixes(d); tree_.append(result,d);
+    suffixes(d); tree_.nodes[d].scope=active_.back(); tree_.append(result,d);
     if (at(SimpleKind::OP_COLON) || at(SimpleKind::OP_LBRACE) || at(SimpleKind::KW_TRY)) {
         tree_.nodes[result].kind=SyntaxKind::SpecialDefinition; function_body(result);
     } else {
@@ -173,6 +172,15 @@ void SyntaxParser::defer_body(NodeId owner) {
 }
 void SyntaxParser::defer_expression(NodeId owner, DeferredKind kind, SimpleKind close) {
     DeferredBody region; region.owner=owner; region.scope=active_.back(); region.kind=kind;
+    if (tree_.nodes[owner].kind==SyntaxKind::DefaultArgument) {
+        // One shared-index overlay, not a chain of one scope per parameter.
+        // Crossing it during lookup limits existing parameter declarations;
+        // scopes created inside the default are encountered before this limit.
+        region.scope=create_scope(region.scope);
+        tree_.scopes[region.scope].parameter_prefix=true;
+        tree_.scopes[region.scope].parameter_limit=parameter_order_;
+    }
+    tree_.nodes[owner].scope=region.scope;
     std::vector<SimpleKind> delimiters;
     while (true) {
         if (delimiters.empty() && (at(close) || (kind!=DeferredKind::expression && at(SimpleKind::OP_COMMA)))) break;

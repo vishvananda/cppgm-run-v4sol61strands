@@ -14,6 +14,7 @@ class SyntaxParser {
     std::vector<Category> hints_;
     std::vector<SyntaxScopeId> active_;
     std::uint64_t lookup_serial_ = 0;
+    std::uint32_t parameter_order_ = 0;
     IdentifierId final_id_, override_id_, attribute_id_;
     SyntaxScopeId create_scope(SyntaxScopeId, bool namespace_scope=false);
     SyntaxScopeId common_namespace(SyntaxScopeId, SyntaxScopeId) const;
@@ -82,9 +83,10 @@ class SyntaxParser {
     NodeId primary();
     NodeId allocation();
     NodeId lambda();
-    void attributes();
+    NodeId attributes(NodeId owner=0);
     NodeId postfix(NodeId);
     NodeId declaration();
+    NodeId declaration_impl();
     NodeId declaration_tail(NodeId, bool);
     NodeId compound();
     NodeId statement();

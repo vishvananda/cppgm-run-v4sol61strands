@@ -50,3 +50,4 @@ struct attempts {
     attempts() try : x(1) {} catch (...) { throw; }
     int x;
 };
+struct alignas(16) aligned { alignas(8) int value; };

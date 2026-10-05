@@ -1,14 +1,14 @@
 #pragma once
 #include "preprocess/post/types.h"
 #include <ostream>
-#include <unordered_map>
-#include <unordered_set>
+#include "syntax/index.h"
 
 namespace cppgm {
 using NodeId = std::uint32_t;
 using SyntaxScopeId = std::uint32_t;
 enum class SyntaxCategory : unsigned char { unknown, value, type, templ, space };
 struct SyntaxBinding {
+    std::uint32_t parameter_order = 0; // zero for non-parameter declarations
     SyntaxCategory category = SyntaxCategory::unknown;
     SyntaxScopeId target = 0;
     // Qualifier lookup ignores ordinary values (C++11 3.4.3).
@@ -20,15 +20,19 @@ struct SyntaxBinding {
 struct SyntaxScope {
     SyntaxScopeId parent = 0, nearest_namespace = 0, namespace_parent = 0;
     unsigned namespace_depth = 0;
-    std::unordered_map<IdentifierId,SyntaxBinding> names;
+    // A compact default-argument overlay freezes only parameter visibility.
+    // Maps and complete-class bindings remain shared with the original scope.
+    bool parameter_prefix = false;
+    std::uint32_t parameter_limit = 0;
+    SyntaxIndex<SyntaxBinding> names;
     std::vector<SyntaxScopeId> bases;
     std::vector<SyntaxScopeId> imports;
-    std::unordered_set<SyntaxScopeId> imported;
+    SyntaxIndex<unsigned char> imported;
     std::uint64_t visited = 0;
 };
 // Syntax kinds, not serialized strings, are the interface to later semantics.
 #define CPPGM_SYNTAX_KINDS(X) \
- X(Namespace,"namespace-definition") X(NamespaceAlias,"namespace-alias-definition") \
+ X(Attribute,"attribute-specifier-seq") X(Namespace,"namespace-definition") X(NamespaceAlias,"namespace-alias-definition") \
  X(UsingDirective,"using-directive") X(UsingDeclaration,"using-declaration") X(Target,"target") X(Inline,"inline") \
  X(Enum,"enum-specifier") X(EnumKey,"enum-key") X(Enumerator,"enumerator") \
  X(TranslationUnit,"translation-unit") X(EmptyDeclaration,"empty-declaration") \

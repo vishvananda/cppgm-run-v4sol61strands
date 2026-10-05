@@ -6,7 +6,11 @@ R=Path(__file__).resolve().parents[2]
 T=Path(os.environ.get('PA5_TOOL',R/'dev/cppgm++'))
 REF=R/'reference-binaries/cppgm++'
 cases={
+ 'alignment':'struct alignas(16) lower { alignas(8) int x; };',
  'late_body':'struct lower { int f() { inner x{}; return x.value; } struct inner { int value; }; };',
+ 'default_point':'typedef int kind; struct lower { int f(int x=sizeof(kind), int kind=0) {return x+kind;} };',
+ 'default_own_shadow':'typedef int kind; struct lower { int f(int kind=sizeof(kind)); };',
+ 'default_nested_lambda':'typedef int kind; struct lower { int f(int x=[](int kind){return sizeof(kind);}(0), int kind=0); };',
  'late_defaults':'struct lower { int f(int x=sizeof(inner)) noexcept(sizeof(inner)>0) { return x; } struct inner { int value; }; };',
  'late_members':'struct lower { int size=sizeof(inner); int other{sizeof(inner)}; struct inner { char data[3]; }; };',
  'nested_complete':'struct lower { struct middle { int f(){ inner x{}; return x.value; } }; struct inner { int value; }; };',
@@ -37,10 +41,10 @@ with tempfile.TemporaryDirectory() as d:
   for h in ['g++','clang++']:
    r=subprocess.run([h,'-std=c++11','-fsyntax-only',p],capture_output=True)
    assert r.returncode==0,(name,h,r.stderr.decode())
-  reference_gaps={'inherited_type','qualified_scope'}
+  reference_gaps={'inherited_type','qualified_scope','default_own_shadow','default_nested_lambda'}
   for tool,suffix in [(T,'ast'),(REF,'ref')]:
    r=subprocess.run([tool,'--emit-ast','-o',d/suffix,p],capture_output=True)
-   if tool==REF and name in reference_gaps:
+   if tool==REF and name in {'inherited_type','qualified_scope'}:
     assert r.returncode!=0,(name,'reference gap unexpectedly resolved; review parity')
    else:
     assert r.returncode==0,(name,tool,r.stdout.decode(),r.stderr.decode())
@@ -48,7 +52,12 @@ with tempfile.TemporaryDirectory() as d:
    assert (d/'ast').read_bytes()==(d/'ref').read_bytes(),name
   else:
    text=(d/'ast').read_text()
-   assert 'parameter-declaration' in text and 'cast-expression' in text if name=='inherited_type' else 'decl-specifier TT_IDENTIFIER:word' in text
+   if name=='inherited_type':
+    assert 'parameter-declaration' in text and 'cast-expression' in text
+   elif name=='qualified_scope':
+    assert 'decl-specifier TT_IDENTIFIER:word' in text
+   else:
+    assert 'sizeof-expression\n' in text and 'id-expression kind' in text
  for i,source in enumerate(['struct lower{', 'struct lower { int a:; };','struct lower { lower():x(1) };','struct lower { int f(){ return 1; }','struct lower { int f(int x=); };','struct lower { int x={1; };']):
   p=d/f'reject{i}.cpp';p.write_text(source)
   r=subprocess.run([T,'--emit-ast','-o',d/'bad',p],capture_output=True)

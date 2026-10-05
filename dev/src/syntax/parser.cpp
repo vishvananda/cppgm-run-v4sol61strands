@@ -133,7 +133,13 @@ NodeId SyntaxParser::parameters() {
         if (!at(SimpleKind::OP_COMMA) && !at(SimpleKind::OP_RPAREN) && !at(SimpleKind::OP_ASS)) {
             const bool anonymous_function=at(SimpleKind::OP_LPAREN) && (at(SimpleKind::OP_DOTS,1) || at(SimpleKind::OP_RPAREN,1));
             enter(); NodeId d=declarator(anonymous_function); leave();
-            tree_.append(p,d); bind(declared_name(d),Category::value);
+            tree_.append(p,d);
+            IdentifierId id=declared_name(d);
+            if (id) {
+                bind(id,Category::value);
+                tree_.scopes[active_.back()].names[id].parameter_order=++parameter_order_;
+            }
+            tree_.nodes[p].scope=active_.back();
         }
         if (eat(SimpleKind::OP_ASS)) {
             NodeId a=tree_.node(SyntaxKind::DefaultArgument);
@@ -171,7 +177,7 @@ NodeId SyntaxParser::declarator(bool abstract, bool allow_name, bool allocation)
 }
 NodeId SyntaxParser::suffixes(NodeId result, bool allocation) {
     while (true) {
-        attributes();
+        attributes(result);
         if (eat(SimpleKind::OP_LSQUARE)) {
             NodeId a=tree_.node(SyntaxKind::ArraySuffix);
             if (!at(SimpleKind::OP_RSQUARE)) tree_.append(a,expression(2));
@@ -235,6 +241,11 @@ NodeId SyntaxParser::initializer(bool equal) {
     return result;
 }
 NodeId SyntaxParser::declaration() {
+    NodeId attrs=attributes(); NodeId result=declaration_impl();
+    if (attrs) tree_.append(result,attrs);
+    return result;
+}
+NodeId SyntaxParser::declaration_impl() {
     if (at(SimpleKind::KW_NAMESPACE) || (at(SimpleKind::KW_INLINE) && at(SimpleKind::KW_NAMESPACE,1))) return namespace_declaration();
     if (at(SimpleKind::KW_ENUM)) {
         NodeId e=enum_specifier();
@@ -243,7 +254,6 @@ NodeId SyntaxParser::declaration() {
         NodeId s=tree_.node(SyntaxKind::DeclSpecifiers); tree_.append(s,e);
         return declaration_tail(specs(false,false,s,true),false);
     }
-    attributes();
     if (eat(SimpleKind::OP_SEMICOLON)) return tree_.node(SyntaxKind::EmptyDeclaration);
     if (eat(SimpleKind::KW_STATIC_ASSERT)) {
         NodeId result=tree_.node(SyntaxKind::StaticAssert); require(SimpleKind::OP_LPAREN);

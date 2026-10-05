@@ -36,11 +36,11 @@ runtime/text/object size and the mandatory PA33/34 ≤1.25x GCC executable
 instruction gate are future-stage checks, not waived. Compiler latency, RSS,
 compiler binary size and AST view size are reported separately.
 
-`coverage.py` separately qualifies seven major remaining namespace/class/enum/
+`coverage.py` separately qualifies the inherited seven major remaining namespace/class/enum/
 template/dependent/special-member capability probes with GCC, Clang and the
 reference. It records current student failures; those observations are neither
 passing controls nor a substitute for implementing the remaining PA5 grammar.
-`reference-notes.md` documents two reduced personal oracle disagreements with
+`reference-notes.md` documents reduced personal oracle disagreements with
 C++11 rule proofs and the unchanged bundle revision. No required output changed.
 
 ## Namespace / enum extension (loop 10)
@@ -78,3 +78,45 @@ and `final-scale`. Earlier failed experiments and pre-fix measurements are
 retained. The inherited 100k chains are graph-only scale controls: deeply
 indented dump bytes grow quadratically with depth. A combined full-view run hit
 a command timeout; explicit sanitized graph-only reruns passed for both chains.
+
+
+## Classes / complete-class regions (loop 11)
+
+```sh
+python3 student.tests/pa5/classes.py
+python3 student.tests/pa5/coverage.py
+sources=$(sed -n 's/^FRONTEND_OBJ_BASENAMES_cppgm++ := //p' dev/frontend_source_sets.mk | awk '{for(i=1;i<=NF;i++)printf "dev/src/%s.cpp ",$i}')
+g++ -std=c++11 -O2 -Idev/src student.tests/pa5/classes-graph.cpp $sources -o "$RALPH_ARTIFACT_DIR/pa5/classes/classes-graph"
+"$RALPH_ARTIFACT_DIR/pa5/classes/classes-graph" student.tests/pa5/classes-portable.cpp
+g++ -std=c++11 -O2 -Idev/src student.tests/pa5/index.cpp -o "$RALPH_ARTIFACT_DIR/pa5/classes/index"
+"$RALPH_ARTIFACT_DIR/pa5/classes/index"
+# Rebuild both controls with Clang ASan/UBSan as above, not stale binaries.
+python3 student.tests/pa5/measure-classes.py "$RALPH_ARTIFACT_DIR/pa5/classes/index-class"
+python3 student.tests/pa5/measure-classes.py "$RALPH_ARTIFACT_DIR/pa5/classes/index-parameters-qualified" --parameters
+```
+
+`classes.py` qualifies integration + 26 portable families with GCC/Clang and
+compares full AST views wherever the reference is reliable; graph/category
+controls independently cover the documented reference disagreements. It also
+checks six grammar rejections. `classes-graph.cpp` validates retained class/base/
+member scope facts, node/literal reachability and single ownership after parser
+destruction. `index.cpp` checks 171529 flat-index keys against an independent map,
+including zero and maximum IDs, repeated insertions and geometric rehashing.
+
+`measure-classes.py` uses the same warm/interleaved three-repeat protocol as the
+ordinary harness, with branch/cache triples and symbolized profiles. The default
+2k/20k mix covers inherited types, nested late types, bodies, default arguments,
+noexcept, member initializers, special members and bit-fields. `--parameters`
+uses 2k/20k/60k parameters to catch environment-chain or visible-binding-copy
+costs. The initially attempted 100k single-function case exceeds Clang's parameter
+limit and is retained as a failed capability experiment, not a host-qualified
+cost comparison. Both modes require a frozen turn-start binary at
+`$RALPH_ARTIFACT_DIR/pa5/classes/base-parser` (recorded but not run on unsupported
+class inputs). For ordinary measurements, run `measure.py` in a sibling artifact
+directory; it compares that binary on supported ordinary inputs.
+
+`coverage.py` retains the seven original probes and adds template-template,
+nested-angle, specialization/instantiation and dependent-conversion observations.
+The latter also fails in the reference and is reported separately; required
+course comparisons remain unchanged. Passing class-only special-member probes
+does not imply template-qualified special members are implemented.

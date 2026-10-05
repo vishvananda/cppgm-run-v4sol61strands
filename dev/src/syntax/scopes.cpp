@@ -1,4 +1,6 @@
 #include "syntax/parser.h"
+#include <algorithm>
+#include <limits>
 namespace cppgm {
 SyntaxScopeId SyntaxParser::create_scope(SyntaxScopeId parent, bool namespace_scope) {
     SyntaxScopeId id=tree_.scopes.size(); tree_.scopes.emplace_back();
@@ -26,13 +28,15 @@ void SyntaxParser::leave() { active_.pop_back(); }
 void SyntaxParser::bind(IdentifierId id, Category value, SyntaxScopeId target) {
     if (!id) return;
     auto& b=tree_.scopes[active_.back()].names[id];
-    b.category=value; b.target=target;
+    b.category=value; b.target=target; b.parameter_order=0;
     if (value==Category::type || value==Category::templ || value==Category::space) { b.qualifier=target; b.qualifier_category=value; }
 }
 SyntaxBinding SyntaxParser::lookup(IdentifierId id, SyntaxScopeId scope, bool parents, bool qualifier, bool namespace_only) {
     ++queries_;
     const auto serial=++lookup_serial_;
+    auto parameter_limit=std::numeric_limits<std::uint32_t>::max();
     auto usable=[&](const SyntaxBinding& b) {
+        if (b.parameter_order>parameter_limit) return false;
         if (namespace_only) return b.qualifier_category==Category::space;
         return !qualifier || b.qualifier_category!=Category::unknown;
     };
@@ -44,10 +48,12 @@ SyntaxBinding SyntaxParser::lookup(IdentifierId id, SyntaxScopeId scope, bool pa
     // or scan proportional to all TU scopes. Unqualified using-directives take
     // effect at their nearest common namespace (C++11 7.3.4/2,4); qualified
     // lookup instead searches the nominated namespace without lexical parents.
-    std::unordered_map<SyntaxScopeId,SyntaxBinding> pending;
+    SyntaxIndex<SyntaxBinding> pending;
     for (;scope;scope=parents ? tree_.scopes[scope].parent : 0) {
+        if (tree_.scopes[scope].parameter_prefix)
+            parameter_limit=std::min(parameter_limit,tree_.scopes[scope].parameter_limit);
         auto direct=tree_.scopes[scope].names.find(id);
-        if (direct!=tree_.scopes[scope].names.end() && usable(direct->second)) return selected(direct->second);
+        if (direct && usable(direct->second)) return selected(direct->second);
         // Base lookup is a class-local step, unlike using-directive nominations.
         // Generation stamps bound diamond/cyclic syntax visits to once/query.
         std::vector<SyntaxScopeId> base_work(tree_.scopes[scope].bases);
@@ -56,7 +62,7 @@ SyntaxBinding SyntaxParser::lookup(IdentifierId id, SyntaxScopeId scope, bool pa
             if (env.visited==serial) continue;
             env.visited=serial;
             auto found=env.names.find(id);
-            if (found!=env.names.end() && usable(found->second)) return selected(found->second);
+            if (found && usable(found->second)) return selected(found->second);
             for (auto base:env.bases) base_work.push_back(base);
         }
         std::vector<SyntaxScopeId> work;
@@ -66,14 +72,14 @@ SyntaxBinding SyntaxParser::lookup(IdentifierId id, SyntaxScopeId scope, bool pa
             if (env.visited==serial) continue;
             env.visited=serial;
             auto found=env.names.find(id);
-            if (found!=env.names.end() && usable(found->second)) {
+            if (found && usable(found->second)) {
                 if (!parents) return selected(found->second);
-                pending.emplace(common_namespace(scope,next),found->second);
+                pending.insert(common_namespace(scope,next),found->second);
             }
             for (auto imported:env.imports) work.push_back(imported);
         }
         auto found=pending.find(scope);
-        if (found!=pending.end()) return selected(found->second);
+        if (found) return selected(found->second);
     }
     return {};
 }
@@ -119,7 +125,7 @@ NodeId SyntaxParser::namespace_declaration() {
     }
     auto& names=tree_.scopes[active_.back()].names;
     auto old=names.find(id);
-    SyntaxScopeId scope=old!=names.end() && old->second.category==Category::space ? old->second.target : 0;
+    SyntaxScopeId scope=old && old->second.category==Category::space ? old->second.target : 0;
     if (!scope) scope=create_scope(active_.back(),true);
     bind(id,Category::space,scope); tree_.nodes[result].scope=scope;
     // An unnamed namespace is reopened through a reserved zero identifier.

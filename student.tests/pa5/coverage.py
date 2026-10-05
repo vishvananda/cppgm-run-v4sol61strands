@@ -11,6 +11,10 @@ cases={
  'template':'template<class value> value identity(value x) { return x; } int f() { return identity<int>(1); }',
  'dependent':'template<class value> typename value::type f(value x) { return x.template get<0>(); }',
  'non_type_template':'template<int count> int f() { return count; }',
+ 'template_template':'template<template<class> class holder> struct lower {}; template<class value> struct box {}; lower<box> x;',
+ 'nested_angles':'template<class value> struct box {}; box<box<int>> x;',
+ 'specialization':'template<class value> struct box {}; template<> struct box<int> {}; extern template struct box<char>;',
+ 'dependent_conversion':'template<class value> struct lower { operator typename value::type() const; }; template<class value> lower<value>::operator typename value::type() const {return 0;}',
  'qualified_special':'struct lower { lower(); }; lower::lower() {}',
 }
 observations={}
@@ -24,6 +28,10 @@ with tempfile.TemporaryDirectory() as d:
   for v,t in [('student',R/'dev/cppgm++'),('reference',R/'reference-binaries/cppgm++')]:
    r=subprocess.run([t,'--emit-ast','-o',d/(n+'-'+v+'.ast'),p],capture_output=True)
    observations[n][v]={'exit':r.returncode,'diagnostic':(r.stdout+r.stderr).decode()}
-   if v=='reference': assert r.returncode==0,(n,r.stdout,r.stderr)
+   if v=='reference':
+    # Preserve the inherited seven host/reference-qualified probes. The new
+    # dependent conversion probe exposes a separate reference capability gap.
+    if n=='dependent_conversion': assert r.returncode!=0,(n,'review newly accepted reference behavior')
+    else: assert r.returncode==0,(n,r.stdout,r.stderr)
 (A/'remaining-capabilities.json').write_text(json.dumps(observations,indent=2))
 print('PA5 remaining capability observations:', {n:o['student']['exit'] for n,o in observations.items()})
