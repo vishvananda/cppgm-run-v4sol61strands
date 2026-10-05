@@ -105,7 +105,7 @@ std::string SyntaxTree::compact(NodeId id, const IdentifierTable& ids) const {
             if (n.payload==SyntaxPayload::identifier) {
                 if (n.global_scope) out+="::";
                 auto spelling=ids.spelling(n.name); out.append(spelling.data,spelling.size);
-                if (n.kind==SyntaxKind::IdExpression || n.kind==SyntaxKind::Identifier || n.kind==SyntaxKind::TypeName || n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::Pointer) {
+                if (n.kind==SyntaxKind::IdExpression || n.kind==SyntaxKind::Identifier || n.kind==SyntaxKind::TypeName || n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::Pointer || n.kind==SyntaxKind::Target) {
                     if (n.member_pointer) work.push_back({0,"::*"});
                     auto c=children();
                     for (std::size_t j=c.size();j>0;--j) { work.push_back({c[j-1],nullptr}); work.push_back({0,"::"}); }
@@ -128,7 +128,7 @@ void SyntaxTree::dump(std::ostream& out, const IdentifierTable& ids, NodeId root
         else if (n.payload==SyntaxPayload::identifier) {
             if (n.kind==SyntaxKind::DeclSpecifier && !n.first && !n.global_scope) out << " TT_IDENTIFIER:";
             else out << ' ';
-            if (n.first && (n.kind==SyntaxKind::IdExpression || n.kind==SyntaxKind::Identifier || n.kind==SyntaxKind::TypeName || n.kind==SyntaxKind::DeclSpecifier)) out << compact(id,ids);
+            if (n.first && (n.kind==SyntaxKind::IdExpression || n.kind==SyntaxKind::Identifier || n.kind==SyntaxKind::TypeName || n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::Target)) out << compact(id,ids);
             else {
                 if (n.global_scope) out << "::";
                 auto spelling=ids.spelling(n.name); out.write(spelling.data,spelling.size);
@@ -155,7 +155,7 @@ void SyntaxTree::dump(std::ostream& out, const IdentifierTable& ids, NodeId root
     };
     auto visible_edges=[&](NodeId n) {
         const auto& node=nodes[n];
-        if (node.kind==SyntaxKind::IdExpression || node.kind==SyntaxKind::Identifier || node.kind==SyntaxKind::LambdaIntroducer ||
+        if (node.kind==SyntaxKind::IdExpression || node.kind==SyntaxKind::Identifier || node.kind==SyntaxKind::Target || node.kind==SyntaxKind::LambdaIntroducer ||
             node.member_pointer || (node.payload==SyntaxPayload::identifier && node.kind==SyntaxKind::DeclSpecifier) ||
             (node.kind==SyntaxKind::FunctionQualifier && node.token==SimpleKind::KW_THROW)) return std::uint32_t(0);
         return node.first;

@@ -34,7 +34,8 @@ NodeId SyntaxParser::ambiguous_statement() {
     // Reuse the common type specifier/list nodes for the construction expression.
     NodeId callee=tree_.child(spec); tree_.nodes[callee].kind=SyntaxKind::IdExpression;
     tree_.nodes[callee].payload=type.kind==PostKind::identifier ? SyntaxPayload::identifier : SyntaxPayload::raw_token;
-    tree_.nodes[callee].name=type.identifier; tree_.nodes[callee].token=type.simple;
+    if (!tree_.nodes[callee].first) tree_.nodes[callee].name=type.identifier;
+    tree_.nodes[callee].token=type.simple;
     tree_.nodes[spec].kind=SyntaxKind::Call;
     NodeId args=0;
     if (declaration_candidate) {

@@ -8,13 +8,24 @@ class SyntaxParser {
     PostCursor& cursor_;
     IdentifierTable& ids_;
     SyntaxTree& tree_;
-    struct InputToken : PostToken { NodeId literal_node = 0; };
+    struct InputToken : PostToken { NodeId literal_node = 0, name_node = 0; };
     std::deque<InputToken> lookahead_;
-    enum class Category : unsigned char { unknown, value, type, templ, space };
-    std::vector<Category> bindings_, hints_;
-    struct Change { IdentifierId id; Category previous; };
-    std::vector<Change> changes_;
-    std::vector<std::size_t> scopes_;
+    using Category = SyntaxCategory;
+    std::vector<Category> hints_;
+    std::vector<SyntaxScopeId> active_;
+    std::uint64_t lookup_serial_ = 0;
+    SyntaxScopeId create_scope(SyntaxScopeId);
+    void import_scope(SyntaxScopeId, SyntaxScopeId);
+    void enter(SyntaxScopeId);
+    SyntaxBinding lookup(IdentifierId, SyntaxScopeId, bool parents=true, bool qualifier=false);
+    Category hint(IdentifierId);
+    void bind(IdentifierId, Category, SyntaxScopeId target=0);
+    void prepare_name(unsigned offset=0);
+    NodeId namespace_declaration();
+    NodeId using_declaration();
+    NodeId enum_specifier();
+    NodeId qualified_component(SyntaxKind);
+    NodeId qualified_raw(SyntaxKind);
     std::size_t tokens_=0, queries_=0, max_lookahead_=0;
     InputToken take();
     const PostToken& peek(unsigned offset=0);
@@ -24,7 +35,6 @@ class SyntaxParser {
     [[noreturn]] void error(const char*);
     void enter();
     void leave();
-    void bind(IdentifierId, Category);
     Category category(IdentifierId);
     bool type_start(unsigned offset=0);
     bool specifier(SimpleKind) const;
@@ -32,10 +42,10 @@ class SyntaxParser {
     NodeId leaf(SyntaxKind, const PostToken&);
     NodeId raw(SyntaxKind, SimpleKind);
     NodeId name(SyntaxKind);
-    NodeId specs(bool type=false);
+    NodeId specs(bool type=false, bool force=false);
     NodeId declarator(bool abstract=false, bool allow_name=true, bool allocation=false);
     NodeId parameters();
-    NodeId type_id(bool allocation=false);
+    NodeId type_id(bool allocation=false, bool force=false);
     NodeId initializer(bool equal=false);
     NodeId list(SyntaxKind, SimpleKind close);
     NodeId expression(int minimum=1);
@@ -48,6 +58,7 @@ class SyntaxParser {
     void attributes();
     NodeId postfix(NodeId);
     NodeId declaration();
+    NodeId declaration_tail(NodeId, bool);
     NodeId compound();
     NodeId statement();
     NodeId scoped_statement();
@@ -61,7 +72,7 @@ class SyntaxParser {
     bool function_declarator(NodeId) const;
 public:
     SyntaxParser(PostCursor& cursor, IdentifierTable& ids, SyntaxTree& tree)
-        : cursor_(cursor), ids_(ids), tree_(tree) { enter(); }
+        : cursor_(cursor), ids_(ids), tree_(tree) { tree_.scopes.emplace_back(); enter(); }
     NodeId parse();
     std::size_t tokens() const { return tokens_; }
     std::size_t queries() const { return queries_; }

@@ -1,8 +1,7 @@
 #include "syntax/parser.h"
 namespace cppgm {
-NodeId SyntaxParser::qualified(SyntaxKind kind) {
+NodeId SyntaxParser::qualified_component(SyntaxKind kind) {
     // Every name component has compact identity. The joined leaf is dump-only.
-    bool global=eat(SimpleKind::OP_COLON2);
     NodeId result=0;
     if (eat(SimpleKind::KW_OPERATOR)) {
         if (peek().kind==PostKind::array) {
@@ -37,10 +36,32 @@ NodeId SyntaxParser::qualified(SyntaxKind kind) {
             }
         }
     } else result=name(kind);
-    if (global) tree_.nodes[result].global_scope=true;
-    while (eat(SimpleKind::OP_COLON2)) {
-        if (eat(SimpleKind::OP_STAR)) { tree_.nodes[result].kind=SyntaxKind::Pointer; tree_.nodes[result].member_pointer=true; break; }
-        tree_.append(result,name(SyntaxKind::Identifier));
+    return result;
+}
+NodeId SyntaxParser::qualified(SyntaxKind kind) {
+    if (peek().kind==PostKind::identifier && lookahead_.front().name_node) {
+        NodeId n=take().name_node; tree_.nodes[n].kind=kind; return n;
+    }
+    return qualified_raw(kind);
+}
+NodeId SyntaxParser::qualified_raw(SyntaxKind kind) {
+    bool global=eat(SimpleKind::OP_COLON2);
+    SyntaxScopeId scope=global ? active_.front() : active_.back();
+    NodeId result=qualified_component(kind), component=result;
+    tree_.nodes[result].global_scope=global;
+    bool parents=!global;
+    while (true) {
+        auto id=tree_.nodes[component].name;
+        bool qualifier=at(SimpleKind::OP_COLON2);
+        auto binding=id ? lookup(id,scope,parents,qualifier) : SyntaxBinding{};
+        auto& node=tree_.nodes[result];
+        node.terminal_name=id;
+        node.category=binding.category==Category::unknown ? (id ? hint(id) : Category::value) : binding.category;
+        node.resolved_scope=binding.target;
+        if (!qualifier) break;
+        take(); scope=binding.target; parents=false;
+        if (eat(SimpleKind::OP_STAR)) { node.kind=SyntaxKind::Pointer; node.member_pointer=true; break; }
+        component=qualified_component(SyntaxKind::Identifier); tree_.append(result,component);
     }
     return result;
 }

@@ -1,11 +1,33 @@
 #pragma once
 #include "preprocess/post/types.h"
 #include <ostream>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace cppgm {
 using NodeId = std::uint32_t;
+using SyntaxScopeId = std::uint32_t;
+enum class SyntaxCategory : unsigned char { unknown, value, type, templ, space };
+struct SyntaxBinding {
+    SyntaxCategory category = SyntaxCategory::unknown;
+    SyntaxScopeId target = 0;
+    // Qualifier lookup ignores ordinary values (C++11 3.4.3).
+    SyntaxScopeId qualifier = 0;
+    SyntaxBinding() = default;
+    SyntaxBinding(SyntaxCategory c, SyntaxScopeId t, SyntaxScopeId q) : category(c), target(t), qualifier(q) {}
+};
+struct SyntaxScope {
+    SyntaxScopeId parent = 0;
+    std::unordered_map<IdentifierId,SyntaxBinding> names;
+    std::vector<SyntaxScopeId> imports;
+    std::unordered_set<SyntaxScopeId> imported;
+    std::uint64_t visited = 0;
+};
 // Syntax kinds, not serialized strings, are the interface to later semantics.
 #define CPPGM_SYNTAX_KINDS(X) \
+ X(Namespace,"namespace-definition") X(NamespaceAlias,"namespace-alias-definition") \
+ X(UsingDirective,"using-directive") X(UsingDeclaration,"using-declaration") X(Target,"target") X(Inline,"inline") \
+ X(Enum,"enum-specifier") X(EnumKey,"enum-key") X(Enumerator,"enumerator") \
  X(TranslationUnit,"translation-unit") X(EmptyDeclaration,"empty-declaration") \
  X(SimpleDeclaration,"simple-declaration") X(FunctionDefinition,"function-definition") \
  X(DeclSpecifiers,"decl-specifier-seq") X(DeclSpecifier,"decl-specifier") \
@@ -56,6 +78,9 @@ struct SyntaxNode {
     IdentifierId name = 0;
     std::uint32_t first = 0, last = 0, offset = 0, length = 0, literal = 0;
     bool is_decltype = false, is_operator = false, operator_array = false, member_pointer = false, operator_literal = false, operator_conversion = false, global_scope = false, has_parentheses = false;
+    SyntaxScopeId scope = 0, resolved_scope = 0;
+    SyntaxCategory category = SyntaxCategory::unknown;
+    IdentifierId terminal_name = 0;
     SourceRange range = {0,0};
     SourceLocation location = {0,0,0};
 };
@@ -71,6 +96,7 @@ struct SyntaxEdge { NodeId child; std::uint32_t next; };
 // TU-owned flat arenas. Destruction is iterative; no child owns an allocation.
 class SyntaxTree {
 public:
+    std::vector<SyntaxScope> scopes; // TU-owned environments survive parser destruction.
     std::vector<SyntaxNode> nodes;
     std::vector<SyntaxEdge> edges;
     std::vector<SyntaxLiteral> literals;

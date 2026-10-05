@@ -3,6 +3,16 @@
 Stage base commit: 08275a628da86ffd921633806a3f9ca72fcaaaeb
 Last reviewed commit: 08275a628da86ffd921633806a3f9ca72fcaaaeb
 
+## Active extension (loop 10)
+- Turn HEAD: 5e260a5d9ad20d888c2bc6f42ede78f63c7d1f04; inherited stage/review
+  markers above preserved. Baseline 68/188.
+- Owner `syntax`: retained indexed scope environments, namespace/using and enum
+  declarations, qualified category decisions. Data flow is interned IDs -> scope
+  bindings/edges -> structured name nodes, never joined-string lookup or TU scan.
+  Target O(tokens + graph + language-required scope/dependency visits), geometric
+  storage; validate fixture ASTs, portable GCC/Clang cases, scope-isolation and
+  repeated pinned PMU/latency/RSS scaling.
+
 ## Design / completed group
 - Turn start 0/188; final 68/188 (120 original failures remain, coverage unchanged).
   Owner `syntax`: ordinary declarations/declarators/type-ids, expressions,
