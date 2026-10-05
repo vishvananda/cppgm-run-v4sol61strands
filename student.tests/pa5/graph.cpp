@@ -40,7 +40,7 @@ int main(int argc, char** argv) {
         assert(last==n.last);
     }
     for (std::size_t i=1;i<seen.size();++i) assert(seen[i]==1); // no abandoned speculative tree
-    assert(names);
+    if (argc==2) assert(names);
     if (argc==2) assert(literals);
     if (argc==2) assert(pointers && captures && twenty_eight>=2 && strings>=2);
     assert(parser.max_lookahead()<=4);

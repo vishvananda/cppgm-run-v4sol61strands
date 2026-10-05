@@ -103,7 +103,9 @@ void SyntaxParser::prepare_name(unsigned offset) {
     if (lookahead_[offset].name_node) return;
     if (at(SimpleKind::OP_COLON2,offset) && peek(offset+1).kind!=PostKind::identifier) return;
     if (!at(SimpleKind::OP_COLON2,offset) &&
-        !(peek(offset).kind==PostKind::identifier && at(SimpleKind::OP_COLON2,offset+1))) return;
+        !(peek(offset).kind==PostKind::identifier && (at(SimpleKind::OP_COLON2,offset+1) ||
+          (at(SimpleKind::OP_LT,offset+1) && (category(peek(offset).identifier)==Category::templ ||
+           (lookup(peek(offset).identifier,active_.back()).category==Category::unknown && type_start(offset+2))))))) return;
     std::deque<InputToken> prefix;
     while (!expected_ && (offset--)) { prefix.push_back(std::move(lookahead_.front())); lookahead_.pop_front(); }
     auto original=lookahead_.front();

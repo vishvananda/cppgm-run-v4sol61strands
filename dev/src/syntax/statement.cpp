@@ -126,6 +126,18 @@ NodeId SyntaxParser::statement() {
     if (peek().kind==PostKind::identifier && at(SimpleKind::OP_COLON,1)) {
         NodeId result=name(SyntaxKind::Label); take(); tree_.append(result,statement()); return result;
     }
+    if (at(SimpleKind::KW_TYPENAME)) {
+        take(); NodeId result=tree_.node(SyntaxKind::ExpressionStatement);
+        tree_.append(result,expression_tail(postfix(qualified(SyntaxKind::IdExpression))));
+        if (!require(SimpleKind::OP_SEMICOLON)) return 0;
+        return result;
+    }
+    prepare_name();
+    if (type_start() && at(SimpleKind::OP_LBRACE,1)) {
+        NodeId result=tree_.node(SyntaxKind::ExpressionStatement); tree_.append(result,expression());
+        if (!require(SimpleKind::OP_SEMICOLON)) return 0;
+        return result;
+    }
     if (type_start() && at(SimpleKind::OP_LPAREN,1)) return ambiguous_statement();
     if (type_start() || at(SimpleKind::KW_USING) || at(SimpleKind::KW_STATIC_ASSERT)) return declaration();
     NodeId result=tree_.node(SyntaxKind::ExpressionStatement);

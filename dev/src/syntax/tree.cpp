@@ -84,6 +84,7 @@ std::string SyntaxTree::compact(NodeId id, const IdentifierTable& ids) const {
             out+=n.operator_literal ? "operator\"\"" : "operator";
             work.push_back({child(i.id),nullptr});
             if (n.operator_conversion && n.global_scope) out+=' ';
+            if (n.operator_literal && n.last && nodes[edges[n.last].child].kind==SyntaxKind::TemplateArguments) work.insert(work.end()-1,{edges[n.last].child,nullptr});
         } else if (n.destructor) {
             out+='~'; auto spelling=ids.spelling(n.name); out.append(spelling.data,spelling.size);
         } else if (n.is_operator) {
@@ -91,12 +92,41 @@ std::string SyntaxTree::compact(NodeId id, const IdentifierTable& ids) const {
             if (n.token==SimpleKind::OP_LPAREN) out+=')';
             if (n.token==SimpleKind::OP_LSQUARE) out+=']';
             if (n.operator_array) out+="[]";
+            if (n.first) work.push_back({child(i.id),nullptr});
         } else if (n.is_decltype) {
+            auto c=children();
+            for (std::size_t j=c.size();j>1;--j) { work.push_back({c[j-1],nullptr}); work.push_back({0,"::"}); }
             out+="decltype("; work.push_back({0,")"}); work.push_back({child(i.id),nullptr});
         } else if (n.kind==SyntaxKind::Sizeof) {
             out+="sizeof("; work.push_back({0,")"}); work.push_back({child(i.id),nullptr});
-        } else if (n.kind==SyntaxKind::TypeId || n.kind==SyntaxKind::TypeSpecifiers || n.kind==SyntaxKind::AbstractDeclarator) {
-            auto c=children(); for (auto j=c.rbegin();j!=c.rend();++j) work.push_back({*j,nullptr});
+        } else if (n.kind==SyntaxKind::TemplateArguments) {
+            out+="<"; work.push_back({0,">"}); auto c=children();
+            for (std::size_t j=c.size();j>0;--j) { work.push_back({c[j-1],nullptr}); if (j>1) work.push_back({0,","}); }
+        } else if ((n.kind==SyntaxKind::PackExpansion || n.kind==SyntaxKind::PackExpression) && n.first) {
+            work.push_back({0,"..."}); work.push_back({child(i.id),nullptr});
+        } else if (n.kind==SyntaxKind::FactoredSyntax || n.kind==SyntaxKind::TypeId || n.kind==SyntaxKind::TypeSpecifiers || n.kind==SyntaxKind::AbstractDeclarator) {
+            if (n.typename_keyword) out+="typename ";
+            auto c=children();
+            for (std::size_t j=c.size();j>0;--j) { work.push_back({c[j-1],nullptr}); if (n.kind==SyntaxKind::TypeSpecifiers && j>1) work.push_back({0," "}); }
+        } else if (n.kind==SyntaxKind::Parameters) {
+            out+='('; work.push_back({0,")"}); auto c=children();
+            for (std::size_t j=c.size();j>0;--j) { work.push_back({c[j-1],nullptr}); if (j>1) work.push_back({0,","}); }
+        } else if (n.kind==SyntaxKind::Cast && n.token==SimpleKind::OP_LPAREN) {
+            auto c=children(); if (c.size()>1) work.push_back({c[1],nullptr});
+            work.push_back({0,")"}); work.push_back({c[0],nullptr}); out+='(';
+        } else if (n.kind==SyntaxKind::New) {
+            auto c=children();
+            for (auto j=c.rbegin();j!=c.rend();++j) if (nodes[*j].kind!=SyntaxKind::GlobalScope) work.push_back({*j,nullptr});
+            if (!c.empty() && nodes[c[0]].kind==SyntaxKind::GlobalScope) out+="::";
+            out+="new";
+        } else if (n.kind==SyntaxKind::Placement) {
+            work.push_back({child(i.id),nullptr});
+        } else if (n.kind==SyntaxKind::GlobalScope) { out+="::";
+        } else if (n.kind==SyntaxKind::Initializer) {
+            work.push_back({child(i.id),nullptr});
+        } else if (n.kind==SyntaxKind::Parameter || n.kind==SyntaxKind::DeclSpecifiers || n.kind==SyntaxKind::Declarator) {
+            auto c=children();
+            for (std::size_t j=c.size();j>0;--j) { work.push_back({c[j-1],nullptr}); if (n.kind==SyntaxKind::DeclSpecifiers && j>1) work.push_back({0," "}); }
         } else if (n.kind==SyntaxKind::Parenthesized || n.kind==SyntaxKind::Arguments || n.kind==SyntaxKind::ParenArguments || n.kind==SyntaxKind::ParenInitializer || n.kind==SyntaxKind::LambdaIntroducer) {
             out+=n.kind==SyntaxKind::LambdaIntroducer ? "[" : "(";
             work.push_back({0,n.kind==SyntaxKind::LambdaIntroducer ? "]" : ")"});
@@ -106,6 +136,14 @@ std::string SyntaxTree::compact(NodeId id, const IdentifierTable& ids) const {
             out+=token_spelling(n.token); work.push_back({child(i.id),nullptr});
         } else if (n.kind==SyntaxKind::Binary || n.kind==SyntaxKind::Assignment || n.kind==SyntaxKind::Comma) {
             auto c=children(); work.push_back({c[1],nullptr}); work.push_back({0,n.kind==SyntaxKind::Comma ? "," : token_spelling(n.token)}); work.push_back({c[0],nullptr});
+        } else if (n.kind==SyntaxKind::ArraySuffix) {
+            out+='['; work.push_back({0,"]"}); if (n.first) work.push_back({child(i.id),nullptr});
+        } else if (n.kind==SyntaxKind::Conditional) {
+            auto c=children(); work.push_back({c[2],nullptr}); work.push_back({0,":"}); work.push_back({c[1],nullptr}); work.push_back({0,"?"}); work.push_back({c[0],nullptr});
+        } else if (n.kind==SyntaxKind::Subscript) {
+            auto c=children(); work.push_back({0,"]"}); work.push_back({c[1],nullptr}); work.push_back({0,"["}); work.push_back({c[0],nullptr});
+        } else if (n.kind==SyntaxKind::Member) {
+            auto c=children(); work.push_back({c[1],nullptr}); work.push_back({0,token_spelling(n.token)}); work.push_back({c[0],nullptr});
         } else if (n.kind==SyntaxKind::Call) {
             auto c=children(); for (auto j=c.rbegin();j!=c.rend();++j) work.push_back({*j,nullptr});
         } else if (n.kind==SyntaxKind::Capture) {
@@ -114,11 +152,16 @@ std::string SyntaxTree::compact(NodeId id, const IdentifierTable& ids) const {
         } else {
             if (n.payload==SyntaxPayload::identifier) {
                 if (n.global_scope) out+="::";
+                if (n.template_keyword) out+="template ";
                 auto spelling=ids.spelling(n.name); out.append(spelling.data,spelling.size);
-                if (n.kind==SyntaxKind::IdExpression || n.kind==SyntaxKind::Identifier || n.kind==SyntaxKind::TypeName || n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::Pointer || n.kind==SyntaxKind::Target || n.kind==SyntaxKind::BaseName || n.kind==SyntaxKind::MemInitializerId) {
+                if (n.kind==SyntaxKind::IdExpression || n.kind==SyntaxKind::Identifier || n.kind==SyntaxKind::TypeName || n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::Pointer || n.kind==SyntaxKind::Target || n.kind==SyntaxKind::BaseName || n.kind==SyntaxKind::MemInitializerId || n.kind==SyntaxKind::Class || n.kind==SyntaxKind::ClassForward) {
                     if (n.member_pointer) work.push_back({0,"::*"});
                     auto c=children();
-                    for (std::size_t j=c.size();j>0;--j) { work.push_back({c[j-1],nullptr}); work.push_back({0,"::"}); }
+                    for (std::size_t j=c.size();j>0;--j) {
+                        if (nodes[c[j-1]].kind!=SyntaxKind::Identifier && nodes[c[j-1]].kind!=SyntaxKind::TemplateArguments) continue;
+                        work.push_back({c[j-1],nullptr});
+                        if (nodes[c[j-1]].kind!=SyntaxKind::TemplateArguments) work.push_back({0,"::"});
+                    }
                 }
             } else if (n.payload==SyntaxPayload::token || n.payload==SyntaxPayload::raw_token) out+=token_spelling(n.token);
             else if (n.payload==SyntaxPayload::spelling || n.payload==SyntaxPayload::literal) out.append(spellings.data()+n.offset,n.length);
@@ -144,7 +187,7 @@ void SyntaxTree::dump(std::ostream& out, const IdentifierTable& ids, NodeId root
         else if (n.payload==SyntaxPayload::identifier) {
             if ((n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::VirtSpecifier) && !n.first && !n.global_scope) out << " TT_IDENTIFIER:";
             else out << ' ';
-            if (n.first && (n.kind==SyntaxKind::IdExpression || n.kind==SyntaxKind::Identifier || n.kind==SyntaxKind::TypeName || n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::Target || n.kind==SyntaxKind::BaseName || n.kind==SyntaxKind::MemInitializerId)) out << compact(id,ids);
+            if (n.first && (n.kind==SyntaxKind::IdExpression || n.kind==SyntaxKind::Identifier || n.kind==SyntaxKind::TypeName || n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::Target || n.kind==SyntaxKind::BaseName || n.kind==SyntaxKind::MemInitializerId || n.kind==SyntaxKind::Class || n.kind==SyntaxKind::ClassForward)) out << compact(id,ids);
             else {
                 if (n.global_scope) out << "::";
                 auto spelling=ids.spelling(n.name); out.write(spelling.data,spelling.size);
@@ -163,15 +206,16 @@ void SyntaxTree::dump(std::ostream& out, const IdentifierTable& ids, NodeId root
             }
         }
         else if (n.payload==SyntaxPayload::spelling || n.payload==SyntaxPayload::literal) {
-            out << ' '; out.write(spellings.data()+n.offset,n.length);
+            out << (n.token_literal_view ? " TT_LITERAL:" : " "); out.write(spellings.data()+n.offset,n.length);
         }
         if (n.kind==SyntaxKind::LambdaIntroducer) out << ' ' << compact(id,ids);
+        if (n.kind==SyntaxKind::TrailingReturn && n.first && nodes[child(child(child(id)))].is_decltype) out << ' ' << compact(child(id),ids);
         if (n.kind==SyntaxKind::Placement) out << ' ' << compact(child(id),ids);
         out << '\n';
     };
     auto visible_edges=[&](NodeId n) {
         const auto& node=nodes[n];
-        if (node.kind==SyntaxKind::IdExpression || node.kind==SyntaxKind::Identifier || node.kind==SyntaxKind::Target || node.kind==SyntaxKind::BaseName || node.kind==SyntaxKind::MemInitializerId || node.kind==SyntaxKind::LambdaIntroducer ||
+        if (node.kind==SyntaxKind::TypeName || node.kind==SyntaxKind::IdExpression || node.kind==SyntaxKind::Identifier || node.kind==SyntaxKind::Target || node.kind==SyntaxKind::BaseName || node.kind==SyntaxKind::MemInitializerId || node.kind==SyntaxKind::LambdaIntroducer ||
             node.member_pointer || (node.payload==SyntaxPayload::identifier && node.kind==SyntaxKind::DeclSpecifier) ||
             (node.kind==SyntaxKind::FunctionQualifier && node.token==SimpleKind::KW_THROW)) return std::uint32_t(0);
         return node.first;
@@ -181,8 +225,11 @@ void SyntaxTree::dump(std::ostream& out, const IdentifierTable& ids, NodeId root
         auto& f=stack.back();
         if (!f.edge) { stack.pop_back(); continue; }
         NodeId c=edges[f.edge].child; f.edge=edges[f.edge].next;
+        if (nodes[c].kind==SyntaxKind::TemplateArguments) continue;
         if (nodes[c].kind==SyntaxKind::Attribute) continue; // explicit PA5 view omits attributes
-        unsigned depth=f.depth+1; print(c,depth); stack.push_back({c,visible_edges(c),depth});
+        unsigned depth=f.depth+(nodes[f.node].kind==SyntaxKind::FactoredSyntax ? 0 : 1);
+        if (nodes[c].kind!=SyntaxKind::FactoredSyntax) print(c,depth);
+        stack.push_back({c,visible_edges(c),depth});
     }
 }
 }

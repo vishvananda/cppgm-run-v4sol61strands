@@ -1,5 +1,29 @@
 #include "syntax/parser.h"
 namespace cppgm {
+NodeId SyntaxParser::parameter_expression(NodeId p) {
+    NodeId spec=tree_.child(p); NodeId d=tree_.nodes[p].first ? tree_.edges[tree_.nodes[p].first].next : 0;
+    d=d ? tree_.edges[d].child : 0;
+    NodeId callee=tree_.child(spec);
+    if (!callee) return error("initializer expression type");
+    auto& c=tree_.nodes[callee]; c.kind=SyntaxKind::IdExpression;
+    bool builtin_type=c.payload==SyntaxPayload::token;
+    if (builtin_type) c.payload=SyntaxPayload::raw_token;
+    tree_.nodes[p].kind=SyntaxKind::Call;
+    // Keep the factored wrappers owned by the graph. They are transparent in
+    // explicit views, but no parsed node or source range is abandoned.
+    tree_.nodes[spec].kind=SyntaxKind::FactoredSyntax;
+    NodeId args=0;
+    if (d) {
+        tree_.nodes[d].kind=SyntaxKind::FactoredSyntax;
+        args=tree_.child(d);
+        if (args && tree_.nodes[args].kind==SyntaxKind::Parameters) {
+            tree_.nodes[args].kind=builtin_type ? SyntaxKind::ParenArguments : SyntaxKind::Arguments;
+            for (auto e=tree_.nodes[args].first;e;e=tree_.edges[e].next) tree_.edges[e].child=parameter_expression(tree_.edges[e].child);
+        } else return error("initializer expression argument");
+    }
+    if (!args) tree_.append(p,tree_.node(builtin_type ? SyntaxKind::ParenArguments : SyntaxKind::Arguments));
+    return p;
+}
 NodeId SyntaxParser::ambiguous_statement() {
     if (expected_) return 0;
     // Factor type(expr/declarator) once. No speculative token retention, replay,

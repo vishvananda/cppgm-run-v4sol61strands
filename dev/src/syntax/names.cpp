@@ -55,13 +55,20 @@ NodeId SyntaxParser::qualified_raw(SyntaxKind kind, bool namespace_only) {
     NodeId result=qualified_component(kind), component=result;
     tree_.nodes[result].global_scope=global;
     bool parents=!global;
+    bool member=member_name_; member_name_=false;
     while (!expected_ && (true)) {
         auto id=tree_.nodes[component].name;
+        auto binding=(id && !(member && !at(SimpleKind::OP_COLON2))) ? lookup(id,scope,parents,at(SimpleKind::OP_COLON2),namespace_only) : SyntaxBinding{};
+        Category fact=binding.category==Category::unknown ? (id ? hint(id) : Category::value) : binding.category;
+        if (member && !at(SimpleKind::OP_COLON2)) fact=Category::value;
+        if (at(SimpleKind::OP_LT) && (fact==Category::templ || (binding.category==Category::unknown && !member  && type_start(1)) || tree_.nodes[component].is_operator || tree_.nodes[component].operator_literal || tree_.nodes[component].template_keyword))
+            tree_.append(component,template_arguments());
         bool qualifier=at(SimpleKind::OP_COLON2);
-        auto binding=id ? lookup(id,scope,parents,qualifier,namespace_only && !qualifier) : SyntaxBinding{};
+        if (qualifier && id) binding=lookup(id,scope,parents,true);
         auto& node=tree_.nodes[result];
         node.terminal_name=id;
         node.category=binding.category==Category::unknown ? (id ? hint(id) : Category::value) : binding.category;
+        if (binding.category==Category::templ && !binding.template_type) node.category=Category::value;
         node.resolved_scope=binding.target;
         if (!qualifier) break;
         take(); scope=binding.target; parents=false;
@@ -70,7 +77,10 @@ NodeId SyntaxParser::qualified_raw(SyntaxKind kind, bool namespace_only) {
         // A qualified declarator's conversion type is looked up in its class.
         // Temporarily nominate that indexed environment, not the rendered prefix.
         if (scope) enter(scope);
+        member=false;
+        bool explicit_template=eat(SimpleKind::KW_TEMPLATE);
         component=qualified_component(SyntaxKind::Identifier);
+        tree_.nodes[component].template_keyword=explicit_template;
         if (scope) leave();
         if (tree_.nodes[component].operator_conversion) tree_.nodes[component].global_scope=true;
         tree_.append(result,component);

@@ -32,10 +32,9 @@ NodeId SyntaxParser::class_specifier() {
     NodeId result=tree_.node(SyntaxKind::Class,key.location); attributes(result);
     IdentifierId id=0;
     if (peek().kind==PostKind::identifier) {
-        // Class heads are identifiers at this stage. Template-id heads are owned
-        // by template parsing, not invented through spelling-based heuristics.
         auto token=take(); id=token.identifier;
         tree_.nodes[result].payload=SyntaxPayload::identifier; tree_.nodes[result].name=id;
+        if (at(SimpleKind::OP_LT)) tree_.append(result,template_arguments());
     }
     tree_.append(result,leaf(SyntaxKind::ClassKey,key)); attributes(result);
     SyntaxScopeId scope=0;
@@ -44,7 +43,8 @@ NodeId SyntaxParser::class_specifier() {
         if (existing && existing->second.qualifier_category==Category::type) scope=existing->second.qualifier;
     }
     if (!scope) scope=create_scope(active_.back());
-    bind(id,Category::type,scope); tree_.nodes[result].scope=scope;
+    if (!instantiation_depth_) bind(id,template_depth_ ? Category::templ : Category::type,scope);
+    tree_.nodes[result].scope=scope;
     if (peek().kind==PostKind::identifier && final_id_==peek().identifier) take();
     if (eat(SimpleKind::OP_COLON)) {
         NodeId bases=tree_.node(SyntaxKind::BaseClause);
@@ -56,7 +56,7 @@ NodeId SyntaxParser::class_specifier() {
             NodeId name=class_name(SyntaxKind::BaseName); tree_.append(b,name);
             // Indexed base edges allow inherited categories without a TU scan.
             if (tree_.nodes[name].resolved_scope) tree_.scopes[scope].bases.push_back(tree_.nodes[name].resolved_scope);
-            if (eat(SimpleKind::OP_DOTS)) tree_.append(b,raw(SyntaxKind::ParameterPack,SimpleKind::OP_DOTS));
+            if (eat(SimpleKind::OP_DOTS)) tree_.append(b,tree_.token(SyntaxKind::PackExpansion,SimpleKind::OP_DOTS));
             tree_.append(bases,b);
         } while (!expected_ && (eat(SimpleKind::OP_COMMA)));
         tree_.append(result,bases);
@@ -67,7 +67,7 @@ NodeId SyntaxParser::class_specifier() {
     }
     tree_.nodes[result].complete_definition=true;
     const std::size_t first=deferred_.size();
-    enter(scope); bind(id,Category::type,scope); classes_.push_back({id,scope});
+    enter(scope); bind(id,template_depth_ ? Category::templ : Category::type,scope); classes_.push_back({id,scope});
     while (!expected_ && (!at(SimpleKind::OP_RBRACE))) {
         if (peek().kind==PostKind::eof) return error("closing class brace");
         if (at(SimpleKind::KW_PUBLIC) || at(SimpleKind::KW_PRIVATE) || at(SimpleKind::KW_PROTECTED)) {
@@ -88,7 +88,7 @@ NodeId SyntaxParser::ctor_initializer() {
         if (eat(SimpleKind::OP_LPAREN)) tree_.append(m,list(SyntaxKind::ParenArguments,SimpleKind::OP_RPAREN));
         else if (at(SimpleKind::OP_LBRACE)) tree_.append(m,initializer());
         else return error("member initializer arguments");
-        if (eat(SimpleKind::OP_DOTS)) tree_.append(m,raw(SyntaxKind::ParameterPack,SimpleKind::OP_DOTS));
+        if (eat(SimpleKind::OP_DOTS)) tree_.append(m,tree_.token(SyntaxKind::PackExpansion,SimpleKind::OP_DOTS));
         tree_.append(result,m);
     } while (!expected_ && (eat(SimpleKind::OP_COMMA)));
     return result;
@@ -109,7 +109,7 @@ NodeId SyntaxParser::special_member(NodeId spec, NodeId parsed_name) {
     if (spec) {
         tree_.nodes[spec].kind=SyntaxKind::MemberSpecifiers;
         for (auto e=tree_.nodes[spec].first;e;e=tree_.edges[e].next) {
-            auto& n=tree_.nodes[tree_.edges[e].child]; n.kind=SyntaxKind::MemberSpecifier;
+            auto& n=tree_.nodes[tree_.edges[e].child]; if (n.kind==SyntaxKind::DeclSpecifier) n.kind=SyntaxKind::MemberSpecifier;
             if (n.token==SimpleKind::KW_EXPLICIT) n.payload=SyntaxPayload::raw_token;
         }
         tree_.append(result,spec);
@@ -175,9 +175,9 @@ void SyntaxParser::defer_body(NodeId owner) {
     }
     deferred_.push_back(std::move(body));
 }
-void SyntaxParser::defer_expression(NodeId owner, DeferredKind kind, SimpleKind close) {
-    DeferredBody region; region.owner=owner; region.scope=active_.back(); region.kind=kind;
-    if (tree_.nodes[owner].kind==SyntaxKind::DefaultArgument) {
+void SyntaxParser::defer_expression(NodeId owner, DeferredKind kind, SimpleKind close, NodeId siblings) {
+    DeferredBody region; region.owner=owner; region.scope=active_.back(); region.kind=kind; region.siblings=siblings;
+    if (tree_.nodes[owner].kind==SyntaxKind::DefaultArgument && kind!=DeferredKind::parameter_tail) {
         // One shared-index overlay, not a chain of one scope per parameter.
         // Crossing it during lookup limits existing parameter declarations;
         // scopes created inside the default are encountered before this limit.
@@ -188,7 +188,7 @@ void SyntaxParser::defer_expression(NodeId owner, DeferredKind kind, SimpleKind 
     tree_.nodes[owner].scope=region.scope;
     std::vector<SimpleKind> delimiters;
     while (!expected_ && (true)) {
-        if (delimiters.empty() && (at(close) || (kind!=DeferredKind::expression && at(SimpleKind::OP_COMMA)))) break;
+        if (delimiters.empty() && (at(close) || (kind!=DeferredKind::expression && kind!=DeferredKind::parameter_tail && kind!=DeferredKind::member_initializer_tail && at(SimpleKind::OP_COMMA)))) break;
         if (peek().kind==PostKind::eof) { error("complete-class expression boundary"); return; }
         auto t=take();
         if (t.kind==PostKind::simple) {
@@ -206,6 +206,7 @@ void SyntaxParser::defer_expression(NodeId owner, DeferredKind kind, SimpleKind 
     deferred_.push_back(std::move(region));
 }
 void SyntaxParser::finish_bodies(std::size_t first) {
+    auto outer_delimiter=delimiter_depth_; auto outer_angles=std::move(angle_boundaries_);
     auto continuation=std::move(lookahead_);
     auto outer_active=std::move(active_);
     const auto* outer_input=deferred_input_; auto outer_position=deferred_position_;
@@ -214,18 +215,37 @@ void SyntaxParser::finish_bodies(std::size_t first) {
     std::vector<DeferredBody> regions;
     for (std::size_t i=first;i<deferred_.size();++i) regions.push_back(std::move(deferred_[i]));
     deferred_.resize(first);
+    // Member declarator tails publish class names before complete-class bodies.
+    std::stable_partition(regions.begin(),regions.end(),[](const DeferredBody& r) { return r.kind==DeferredKind::member_initializer_tail; });
     for (auto& region:regions) {
         if (expected_) return;
         active_.clear();
         for (SyntaxScopeId s=region.scope;s;s=tree_.scopes[s].parent) active_.push_back(s);
         std::reverse(active_.begin(),active_.end());
+        delimiter_depth_=0; angle_boundaries_.clear();
         deferred_input_=&region.tokens; deferred_position_=0; lookahead_.clear();
         if (region.kind==DeferredKind::body) function_body(region.owner,true);
         else if (region.kind==DeferredKind::expression) tree_.append(region.owner,expression());
-        else tree_.append(region.owner,initializer(region.kind==DeferredKind::equal_initializer));
+        else if (region.kind==DeferredKind::parameter_tail) {
+            tree_.append(region.owner,initializer(true));
+            if (eat(SimpleKind::OP_COMMA)) parameter_entries(region.siblings,false,true);
+        } else if (region.kind==DeferredKind::member_initializer_tail) {
+            tree_.append(region.owner,initializer(true));
+            while (!expected_ && eat(SimpleKind::OP_COMMA)) {
+                enter(); NodeId d=declarator(); IdentifierId id=declared_name(d); leave();
+                bind(id,Category::value);
+                NodeId item=tree_.node(SyntaxKind::InitDeclarator); tree_.append(item,d);
+                if (tree_.nodes[d].initializer) tree_.append(item,tree_.nodes[d].initializer);
+                else if (eat(SimpleKind::OP_ASS)) tree_.append(item,initializer(true));
+                else if (at(SimpleKind::OP_LPAREN)) tree_.append(item,initializer());
+                else if (at(SimpleKind::OP_LBRACE)) { NodeId init=tree_.node(SyntaxKind::Initializer); tree_.append(init,initializer()); tree_.append(item,init); }
+                tree_.append(region.siblings,item);
+            }
+        } else tree_.append(region.owner,initializer(region.kind==DeferredKind::equal_initializer));
         if (peek().kind!=PostKind::eof) { error("end of complete-class region"); return; }
     }
     deferred_input_=outer_input; deferred_position_=outer_position;
+    delimiter_depth_=outer_delimiter; angle_boundaries_=std::move(outer_angles);
     active_=std::move(outer_active); lookahead_=std::move(continuation);
 }
 }

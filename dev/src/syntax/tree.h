@@ -9,6 +9,7 @@ using SyntaxScopeId = std::uint32_t;
 enum class SyntaxCategory : unsigned char { unknown, value, type, templ, space };
 struct SyntaxBinding {
     std::uint32_t parameter_order = 0; // zero for non-parameter declarations
+    bool template_type = true;
     SyntaxCategory category = SyntaxCategory::unknown;
     SyntaxScopeId target = 0;
     // Qualifier lookup ignores ordinary values (C++11 3.4.3).
@@ -32,6 +33,8 @@ struct SyntaxScope {
 };
 // Syntax kinds, not serialized strings, are the interface to later semantics.
 #define CPPGM_SYNTAX_KINDS(X) \
+ X(FactoredSyntax,"factored-syntax") \
+ X(PackExpression,"pack-expansion-expression") X(PackExpansion,"pack-expansion") X(TemplateDeclaration,"template-declaration") X(TemplateClause,"template-parameter-clause") X(TemplateParameters,"template-parameter-list") X(TypeParameter,"type-parameter") X(NonTypeParameter,"non-type-template-parameter") X(TemplateTemplateParameter,"template-template-parameter") X(ParameterKey,"parameter-key") X(DefaultTemplateArgument,"default-template-argument") X(TemplateArguments,"template-argument-list") X(ExplicitInstantiationDeclaration,"explicit-instantiation-declaration") X(ExplicitInstantiation,"explicit-instantiation-definition") X(Extern,"extern") \
  X(Attribute,"attribute-specifier-seq") X(Namespace,"namespace-definition") X(NamespaceAlias,"namespace-alias-definition") \
  X(UsingDirective,"using-directive") X(UsingDeclaration,"using-declaration") X(Target,"target") X(Inline,"inline") \
  X(Enum,"enum-specifier") X(EnumKey,"enum-key") X(Enumerator,"enumerator") \
@@ -84,7 +87,8 @@ struct SyntaxNode {
     SimpleKind token = SimpleKind::KW_AUTO;
     IdentifierId name = 0;
     std::uint32_t first = 0, last = 0, offset = 0, length = 0, literal = 0;
-    bool destructor = false, complete_definition = false, is_decltype = false, is_operator = false, operator_array = false, member_pointer = false, operator_literal = false, operator_conversion = false, global_scope = false, has_parentheses = false;
+    bool token_literal_view = false, typename_keyword = false, template_keyword = false, destructor = false, complete_definition = false, is_decltype = false, is_operator = false, operator_array = false, member_pointer = false, operator_literal = false, operator_conversion = false, global_scope = false, has_parentheses = false;
+    NodeId initializer = 0;
     SyntaxScopeId scope = 0, resolved_scope = 0, qualifier_scope = 0;
     SyntaxCategory category = SyntaxCategory::unknown;
     IdentifierId terminal_name = 0;

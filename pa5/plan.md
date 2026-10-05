@@ -75,3 +75,23 @@ Future semantic demand, canonical types, overloads, lowering, ABI and ELF remain
 owned by later PAs; PA5 must preserve the graph for them, not duplicate/reparse it.
 Ralph owns external acceptance and advancement; this record claims only the
 verified checkpoint-preservation boundary, not whole-stage completion.
+
+## Loop 13 implementation ownership (2026-10-05)
+Owner: `syntax/templates` with indexed scopes in `syntax/scopes`, qualified
+components in `syntax/names`, delimiter-aware expression boundaries. Data flow:
+streaming tokens -> TU-owned template clauses/arguments and scopes -> retained
+syntax graph -> explicit dump view. Template bodies are parsed once; no token
+replay, rendered-name lookup or TU scans. Work is proportional to consumed
+tokens plus actual scope edges; angle splitting retains original token identity.
+Validation: exact unchanged PA5 trees, host-qualified portable interactions,
+retained graph checks, malformed controls and repeated host-relative PMU/RSS
+on amplified template input and inherited workloads. Remaining implementation
+and independent review questions will be recorded separately at handoff.
+
+Loop-13 cohesive implementation checkpoint: unchanged PA5 188/188 and through-PA5
+393/393; 26 portable template families + six grammar rejections pass. Template
+publication, explicit-instantiation category preservation, complete-class angle
+state, and conversion/type argument factoring are resolved together. Single graph
+ownership passes all new portable families; factored declaration wrappers remain
+typed/owned but transparent to the view. Full controls/measurements are in progress;
+this checkpoint does not claim stage acceptance.

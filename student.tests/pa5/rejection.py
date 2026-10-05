@@ -4,7 +4,7 @@ from pathlib import Path
 import os, subprocess, tempfile
 R=Path(__file__).resolve().parents[2]
 T=Path(os.environ.get('PA5_TOOL',R/'dev/cppgm++')).resolve()
-sources=[R/'student.tests/pa5-portable.cpp',R/'student.tests/pa5/scopes-portable.cpp',R/'student.tests/pa5/classes-portable.cpp']
+sources=[R/'student.tests/pa5-portable.cpp',R/'student.tests/pa5/scopes-portable.cpp',R/'student.tests/pa5/classes-portable.cpp',R/'student.tests/pa5/templates-portable.cpp']
 with tempfile.TemporaryDirectory() as directory:
  d=Path(directory); count=0
  for source in sources:
