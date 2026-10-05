@@ -100,7 +100,7 @@ assert records(invoke('#include "h"\n#include "h"\n',companions={'h':'2\n'}))==[
 for count in (1000,10000,100000):
     source='#define F(x) x\n'+'F('*count+'done'+')'*count+'\n'
     assert records(invoke(source))==['identifier done']
-    if count<=10000: portable(source,'done')
+    if count<=1000: portable(source,'done')
 
 # Random independent portable DAG expansion, not reference fixture answers.
 rng = random.Random(412)

@@ -20,6 +20,7 @@ struct SourceLocation {
     std::size_t offset, line, column;
     // Zero for standalone lexer tools; preprocessing assigns a TU source ID.
     std::uint32_t file;
+    std::uint32_t presumed_file;
 };
 struct SourceRange { std::size_t begin, end; };
 enum class TokenKind : unsigned char {

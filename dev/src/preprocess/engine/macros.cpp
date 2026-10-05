@@ -250,7 +250,7 @@ void MacroEngine::substitute(const Macro& m, const PPItem& head, std::uint32_t r
                 p.paint=p.paint?0:parameter_paint;
             }
             if (r.parameter<0) { p.file=head.file; p.line=head.line;
-                p.token.location=head.token.location;
+                p.token.location=head.token.location; p.token.range=head.token.range;
             }
         }
         if (!part.empty()) part.front().space = r.item.space;
@@ -283,6 +283,7 @@ struct MacroEngine::Rescan::State {
     };
     struct Frame {
         std::vector<Span> chunks;
+        std::vector<PPItem> immediate;
         std::vector<PPItem> output;
         std::unique_ptr<Invocation> invocation;
     };
@@ -320,6 +321,9 @@ bool MacroEngine::next(PPItem& result, Rescan& rescan, const Pull& source, const
         std::shared_ptr<const Sequence> pulled_sequence;
         std::size_t pulled_index=0;
         auto pull=[&](PPItem& p) {
+            if(!frame.immediate.empty()) {
+                pulled_sequence.reset(); p=std::move(frame.immediate.back());frame.immediate.pop_back();return true;
+            }
             while(!frame.chunks.empty() && frame.chunks.back().begin==frame.chunks.back().end) frame.chunks.pop_back();
             if(!frame.chunks.empty()) {
                 auto& chunk=frame.chunks.back();pulled_sequence=chunk.sequence;pulled_index=chunk.begin;
@@ -329,8 +333,8 @@ bool MacroEngine::next(PPItem& result, Rescan& rescan, const Pull& source, const
             return frames.size()==1 && source(p);
         };
         auto unread=[&](PPItem p) {
-            if(pulled_sequence && !frame.chunks.empty() && frame.chunks.back().sequence==pulled_sequence && frame.chunks.back().begin==pulled_index+1) --frame.chunks.back().begin;
-            else {std::vector<PPItem> v;v.push_back(std::move(p));auto seq=sequence(std::move(v));frame.chunks.push_back({seq,0,1});}
+            if(frame.immediate.empty() && pulled_sequence && !frame.chunks.empty() && frame.chunks.back().sequence==pulled_sequence && frame.chunks.back().begin==pulled_index+1) --frame.chunks.back().begin;
+            else frame.immediate.push_back(std::move(p));
         };
         auto emit=[&](PPItem p) {if(frames.size()==1) {result=std::move(p);return true;}frame.output.push_back(std::move(p));return false;};
         PPItem p;
@@ -350,6 +354,21 @@ bool MacroEngine::next(PPItem& result, Rescan& rescan, const Pull& source, const
         if(!defined(id)) {if(emit(std::move(p)))return true;continue;}
         const std::uint32_t macro_index=bindings_[id]-1;
         const Macro& macro=definitions_[macro_index];
+        // Object-like single-token aliases need neither delimiter indexing nor
+        // an argument task. Keep this ordinary rescan work on a compact stack.
+        if(!macro.function && macro.replacement.size()<=1) {
+            if(painted(p.paint,id)) {p.blocked=true;if(emit(std::move(p)))return true;continue;}
+            ++metrics_.invocations;
+            if(!macro.replacement.empty()) {
+                PPItem replacement=macro.replacement[0].item;
+                replacement.paint=add_paint(p.paint,id);
+                replacement.file=p.file;replacement.line=p.line;
+                replacement.token.location=p.token.location;replacement.token.range=p.token.range;replacement.space=p.space;
+                frame.immediate.push_back(std::move(replacement));
+                metrics_.max_pending=std::max(metrics_.max_pending,frame.immediate.size());
+            }
+            continue;
+        }
         std::unique_ptr<Invocation> job(new Invocation());
         job->macro=macro_index; job->head=p;job->replacement_paint=p.paint;
         if(macro.function) {
@@ -361,7 +380,7 @@ bool MacroEngine::next(PPItem& result, Rescan& rescan, const Pull& source, const
             }
             std::shared_ptr<const Sequence> seq;
             std::size_t start=0,close=0;
-            if(pulled_sequence && !frame.chunks.empty() && frame.chunks.back().sequence==pulled_sequence && pulled_sequence->links[pulled_index].close<frame.chunks.back().end) {
+            if(frame.immediate.empty() && pulled_sequence && !frame.chunks.empty() && frame.chunks.back().sequence==pulled_sequence && pulled_sequence->links[pulled_index].close<frame.chunks.back().end) {
                 seq=pulled_sequence;start=pulled_index;close=seq->links[start].close;
                 frame.chunks.back().begin=close+1;
             } else {

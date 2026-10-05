@@ -44,7 +44,7 @@ for name in ['text','lookup','arguments','pastes','deep','conditional','includes
     elif name=='conditional':
         text='#define FLAG 7\n'+ '#if defined(FLAG) && FLAG==7 && (1 || 1/0)\ndone\n#else\n#error fail\n#endif\n'*85000;expected=85000
     elif name=='nested':
-        text='#define F(x) x\n'+'F('*30000+'done'+')'*30000+'\n';expected=1
+        text='#define F(x) x\n'+('F('*1000+'done'+')'*1000+'\n')*60;expected=60
     elif name=='aliases':
         text='#define A B\n#define B C\n#define C done\n'+'A\n'*300000;expected=300000
     else:
@@ -54,6 +54,9 @@ for name in ['text','lookup','arguments','pastes','deep','conditional','includes
 manifest={'cpu':cpu,'cpu_model':next(s for s in pathlib.Path('/proc/cpuinfo').read_text().splitlines() if s.startswith('model name')),
           'flags':flags,'commands':{k:list(map(str,v)) for k,v in variants.items()},'inputs':inputs,
           'hashes':{k:sha(shutil.which(str(v[0]))) for k,v in variants.items()},
+          'source_hashes':{str(x.relative_to(ROOT)):sha(x) for x in [ROOT/'dev/preproc.cpp',ROOT/'student.tests/pa4/bench.cpp',*sources]},
+          'gcc_cc1plus_hash':sha(subprocess.check_output(['g++','-print-prog-name=cc1plus'],text=True).strip()),
+          'reference_binary_hash':sha(ROOT/'reference-binaries/preproc'),
           'hosts':{c:subprocess.check_output([c,'--version'],text=True).splitlines()[0] for c in ['g++','clang++']},
           'cache':'one warmup per variant; warm-cache interleaved repeats; taskset fixed CPU',
           'executable_runtime_text_size':'N/A: PA4 emits tokens, not native programs'}

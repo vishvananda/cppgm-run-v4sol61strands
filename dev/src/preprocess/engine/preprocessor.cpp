@@ -58,9 +58,14 @@ struct Preprocessor::Impl {
     // Path lookup cache is TU-local. Sources are immutable for preprocessing;
     // pragma-once hits reuse inode identity and never reopen/stat the path.
     // IDs are interned paths, not scans of loaded sources.
-    std::vector<File*> path_sources;
-    std::vector<std::unique_ptr<File>> sources;
-    std::vector<File*> files;
+    struct SourceRecord {
+        std::shared_ptr<const SourceBuffer> buffer;
+        Identity identity;
+    };
+    // Zero is no cached record; physical source IDs are record ordinals.
+    std::vector<std::uint32_t> path_sources;
+    std::vector<SourceRecord> sources;
+    std::vector<std::unique_ptr<File>> files;
     std::vector<Conditional> conditions;
     std::unordered_set<Identity,IdentityHash> once;
     MacroEngine::Rescan pending;
@@ -96,12 +101,12 @@ struct Preprocessor::Impl {
     MacroEngine::Builtin builtins() { return [this](PPItem& p){return builtin(p);}; }
     void include_file(const std::string& path,bool primary=false) {
         IdentifierId path_id=ids.intern(path);
-        if(!primary && path_id<path_sources.size() && path_sources[path_id] && once.count(path_sources[path_id]->identity)) return;
+        if(!primary && path_id<path_sources.size() && path_sources[path_id] && once.count(sources[path_sources[path_id]-1].identity)) return;
         struct stat s; require(stat(path.c_str(),&s)==0,"missing source/include file");
         Identity id={static_cast<std::uint64_t>(s.st_dev),static_cast<std::uint64_t>(s.st_ino)};
         if(!primary && once.count(id)) return;
         std::shared_ptr<const SourceBuffer> buffer;
-        if(path_id<path_sources.size() && path_sources[path_id]) buffer=path_sources[path_id]->buffer;
+        if(path_id<path_sources.size() && path_sources[path_id]) buffer=sources[path_sources[path_id]-1].buffer;
         else {
             std::ifstream in(path,std::ios::binary); require(bool(in),"cannot open source/include");
             std::ostringstream bytes; bytes<<in.rdbuf();
@@ -110,18 +115,20 @@ struct Preprocessor::Impl {
         }
         ++metrics.files;
         std::uint32_t name=names.size(); names.push_back(path);
-        sources.emplace_back(new File(std::move(buffer),ids,name,id,conditions.size()));
-        sources.back()->source_id=sources.size()-1;
-        files.push_back(sources.back().get());
-        if(path_sources.size()<=path_id) path_sources.resize(path_id+1,nullptr);
-        path_sources[path_id]=sources.back().get();
+        sources.push_back({buffer,id});
+        files.emplace_back(new File(std::move(buffer),ids,name,id,conditions.size()));
+        files.back()->source_id=sources.size()-1;
+        if(path_sources.size()<=path_id) path_sources.resize(path_id+1,0);
+        path_sources[path_id]=sources.size();
     }
     PPItem read(File& f) {
         Token t=f.lexer.next(); ++metrics.source_tokens;
         PPItem p=capture(f.lexer,t); p.file=f.name;
         p.line=static_cast<std::size_t>(static_cast<std::int64_t>(p.line)+f.line_delta);
         p.token.location.line=p.line; p.token.location.file=f.source_id;
-        p.suffix_location.file=f.source_id;
+        p.token.location.presumed_file=f.name;
+        p.suffix_location.file=f.source_id; p.suffix_location.presumed_file=f.name;
+        if(p.literal_end) p.suffix_location.line=static_cast<std::size_t>(static_cast<std::int64_t>(p.suffix_location.line)+f.line_delta);
         return p;
     }
     // Stop before executing a directive so pending macro expansions use the
@@ -222,7 +229,7 @@ struct Preprocessor::Impl {
             if(slash!=std::string::npos) {
                 std::string rel=current.substr(0,slash+1)+path;
                 IdentifierId id=ids.intern(rel);
-                if(id<path_sources.size() && path_sources[id] && once.count(path_sources[id]->identity)) return;
+                if(id<path_sources.size() && path_sources[id] && once.count(sources[path_sources[id]-1].identity)) return;
                 struct stat s; if(stat(rel.c_str(),&s)==0) {include_file(rel);return;}
             }
             include_file(path); return;
@@ -268,7 +275,7 @@ struct Preprocessor::Impl {
             }
             SourceBuffer source(text); Lexer lexer(source,ids,options()); std::vector<PPItem> v;
             for (;;) {Token t=lexer.next(); if(t.kind==TokenKind::eof)break; if(t.kind!=TokenKind::whitespace && t.kind!=TokenKind::newline)v.push_back(capture(lexer,t));}
-            pragma(v,sources[p.token.location.file]->identity);
+            pragma(v,sources[p.token.location.file].identity);
         }
         return false;
     }
@@ -281,6 +288,6 @@ Token Preprocessor::next() {
     return current_.token;
 }
 const PreprocessorMetrics& Preprocessor::metrics() const {return impl_->metrics;}
-const SourceBuffer& Preprocessor::source_buffer(std::uint32_t id) const {return *impl_->sources.at(id)->buffer;}
+const SourceBuffer& Preprocessor::source_buffer(std::uint32_t id) const {return *impl_->sources.at(id).buffer;}
 const std::string& Preprocessor::file_name(std::uint32_t id) const {return impl_->names.at(id);}
 }
