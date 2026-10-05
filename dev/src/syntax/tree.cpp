@@ -129,9 +129,14 @@ std::string SyntaxTree::compact(NodeId id, const IdentifierTable& ids) const {
 void SyntaxTree::dump(std::ostream& out, const IdentifierTable& ids, NodeId root) const {
     struct Frame { NodeId node; std::uint32_t edge; unsigned depth; };
     std::vector<Frame> stack;
+    // One reusable view buffer and one write per node, not one stream sentry
+    // per indentation level. Storage is bounded by maximum rendering depth.
+    std::string indentation;
     auto print=[&](NodeId id, unsigned depth) {
         const auto& n=nodes[id];
-        for (unsigned i=0;i<depth;++i) out << "  ";
+        const std::size_t width=std::size_t(depth)*2;
+        if (indentation.size()<width) indentation.resize(width,' ');
+        out.write(indentation.data(),width);
         out << kind_name(n.kind);
         if (n.kind==SyntaxKind::SpecialDeclaration || n.kind==SyntaxKind::SpecialDefinition) out << ' ' << compact(id,ids);
         if (n.is_decltype) out << ' ' << compact(id,ids);

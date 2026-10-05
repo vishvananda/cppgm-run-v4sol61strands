@@ -2,9 +2,10 @@
 #include <algorithm>
 namespace cppgm {
 NodeId SyntaxParser::class_name(SyntaxKind kind) {
+    if (expected_) return 0;
     if (!eat(SimpleKind::KW_DECLTYPE)) return qualified(kind);
     NodeId result=tree_.node(kind); tree_.nodes[result].is_decltype=true;
-    require(SimpleKind::OP_LPAREN); tree_.append(result,expression()); require(SimpleKind::OP_RPAREN);
+    if (!require(SimpleKind::OP_LPAREN)) { return 0; } tree_.append(result,expression()); if (!require(SimpleKind::OP_RPAREN)) { return 0; }
     return result;
 }
 bool SyntaxParser::special_start() {
@@ -26,6 +27,7 @@ bool SyntaxParser::special_start() {
     return false;
 }
 NodeId SyntaxParser::class_specifier() {
+    if (expected_) return 0;
     auto key=take();
     NodeId result=tree_.node(SyntaxKind::Class,key.location); attributes(result);
     IdentifierId id=0;
@@ -48,7 +50,7 @@ NodeId SyntaxParser::class_specifier() {
         NodeId bases=tree_.node(SyntaxKind::BaseClause);
         do {
             NodeId b=tree_.node(SyntaxKind::Base); attributes(b);
-            while (at(SimpleKind::KW_VIRTUAL) || at(SimpleKind::KW_PUBLIC) || at(SimpleKind::KW_PROTECTED) || at(SimpleKind::KW_PRIVATE)) {
+            while (!expected_ && (at(SimpleKind::KW_VIRTUAL) || at(SimpleKind::KW_PUBLIC) || at(SimpleKind::KW_PROTECTED) || at(SimpleKind::KW_PRIVATE))) {
                 auto t=take(); tree_.append(b,leaf(t.simple==SimpleKind::KW_VIRTUAL ? SyntaxKind::Virtual : SyntaxKind::Access,t));
             }
             NodeId name=class_name(SyntaxKind::BaseName); tree_.append(b,name);
@@ -56,20 +58,20 @@ NodeId SyntaxParser::class_specifier() {
             if (tree_.nodes[name].resolved_scope) tree_.scopes[scope].bases.push_back(tree_.nodes[name].resolved_scope);
             if (eat(SimpleKind::OP_DOTS)) tree_.append(b,raw(SyntaxKind::ParameterPack,SimpleKind::OP_DOTS));
             tree_.append(bases,b);
-        } while (eat(SimpleKind::OP_COMMA));
+        } while (!expected_ && (eat(SimpleKind::OP_COMMA)));
         tree_.append(result,bases);
     }
     if (!eat(SimpleKind::OP_LBRACE)) {
-        if (!id) error("class name or body");
+        if (!id) return error("class name or body");
         tree_.nodes[result].kind=SyntaxKind::ClassForward; return result;
     }
     tree_.nodes[result].complete_definition=true;
     const std::size_t first=deferred_.size();
     enter(scope); bind(id,Category::type,scope); classes_.push_back({id,scope});
-    while (!at(SimpleKind::OP_RBRACE)) {
-        if (peek().kind==PostKind::eof) error("closing class brace");
+    while (!expected_ && (!at(SimpleKind::OP_RBRACE))) {
+        if (peek().kind==PostKind::eof) return error("closing class brace");
         if (at(SimpleKind::KW_PUBLIC) || at(SimpleKind::KW_PRIVATE) || at(SimpleKind::KW_PROTECTED)) {
-            auto t=take(); require(SimpleKind::OP_COLON); tree_.append(result,leaf(SyntaxKind::Access,t));
+            auto t=take(); if (!require(SimpleKind::OP_COLON)) { return 0; } tree_.append(result,leaf(SyntaxKind::Access,t));
         } else tree_.append(result,declaration());
     }
     take(); classes_.pop_back(); leave();
@@ -78,19 +80,21 @@ NodeId SyntaxParser::class_specifier() {
     return result;
 }
 NodeId SyntaxParser::ctor_initializer() {
-    require(SimpleKind::OP_COLON); NodeId result=tree_.node(SyntaxKind::CtorInitializer);
+    if (expected_) return 0;
+    if (!require(SimpleKind::OP_COLON)) { return 0; } NodeId result=tree_.node(SyntaxKind::CtorInitializer);
     do {
         NodeId m=tree_.node(SyntaxKind::MemInitializer);
         tree_.append(m,class_name(SyntaxKind::MemInitializerId));
         if (eat(SimpleKind::OP_LPAREN)) tree_.append(m,list(SyntaxKind::ParenArguments,SimpleKind::OP_RPAREN));
         else if (at(SimpleKind::OP_LBRACE)) tree_.append(m,initializer());
-        else error("member initializer arguments");
+        else return error("member initializer arguments");
         if (eat(SimpleKind::OP_DOTS)) tree_.append(m,raw(SyntaxKind::ParameterPack,SimpleKind::OP_DOTS));
         tree_.append(result,m);
-    } while (eat(SimpleKind::OP_COMMA));
+    } while (!expected_ && (eat(SimpleKind::OP_COMMA)));
     return result;
 }
 NodeId SyntaxParser::function_body(NodeId owner, bool ready) {
+    if (expected_) return 0;
     if (!classes_.empty() && !ready) { defer_body(owner); return owner; }
     bool function_try=eat(SimpleKind::KW_TRY);
     NodeId body=function_try ? tree_.node(SyntaxKind::FunctionTry) : owner;
@@ -100,6 +104,7 @@ NodeId SyntaxParser::function_body(NodeId owner, bool ready) {
     return owner;
 }
 NodeId SyntaxParser::special_member(NodeId spec, NodeId parsed_name) {
+    if (expected_) return 0;
     NodeId result=tree_.node(SyntaxKind::SpecialDeclaration);
     if (spec) {
         tree_.nodes[spec].kind=SyntaxKind::MemberSpecifiers;
@@ -113,7 +118,7 @@ NodeId SyntaxParser::special_member(NodeId spec, NodeId parsed_name) {
     NodeId n=parsed_name ? parsed_name : qualified(SyntaxKind::Identifier); tree_.append(d,n);
     if (tree_.nodes[n].qualifier_scope) tree_.scopes[active_.back()].parent=tree_.nodes[n].qualifier_scope;
     // Constructor/destructor/conversion names have no return type.
-    if (!at(SimpleKind::OP_LPAREN)) error("special member parameter clause");
+    if (!at(SimpleKind::OP_LPAREN)) return error("special member parameter clause");
     suffixes(d); tree_.nodes[d].scope=active_.back(); tree_.append(result,d);
     if (at(SimpleKind::OP_COLON) || at(SimpleKind::OP_LBRACE) || at(SimpleKind::KW_TRY)) {
         tree_.nodes[result].kind=SyntaxKind::SpecialDefinition; function_body(result);
@@ -122,7 +127,7 @@ NodeId SyntaxParser::special_member(NodeId spec, NodeId parsed_name) {
             if (at(SimpleKind::KW_DEFAULT) || at(SimpleKind::KW_DELETE)) { auto t=take(); NodeId init=tree_.node(SyntaxKind::Initializer); tree_.append(init,raw(SyntaxKind::SpecialInitializer,t.simple)); tree_.append(result,init); }
             else tree_.append(result,initializer(true));
         }
-        require(SimpleKind::OP_SEMICOLON);
+        if (!require(SimpleKind::OP_SEMICOLON)) { return 0; }
     }
     leave(); return result;
 }
@@ -133,14 +138,14 @@ void SyntaxParser::defer_body(NodeId owner) {
         body.tokens.push_back({t.kind,t.simple,t.identifier,t.range,t.location,t.literal_node});
     };
     auto balanced=[&](SimpleKind open, SimpleKind close) {
-        if (!at(open)) error("deferred region opener");
+        if (!at(open)) { error("deferred region opener"); return; }
         unsigned depth=0;
         do {
-            if (peek().kind==PostKind::eof) error("deferred region closer");
+            if (peek().kind==PostKind::eof) { error("deferred region closer"); return; }
             if (at(open)) ++depth;
             if (at(close)) --depth;
             capture();
-        } while (depth);
+        } while (!expected_ && (depth));
     };
     const bool function_try=at(SimpleKind::KW_TRY);
     if (function_try) capture();
@@ -149,8 +154,8 @@ void SyntaxParser::defer_body(NodeId owner) {
         do {
             if (at(SimpleKind::KW_DECLTYPE)) { capture(); balanced(SimpleKind::OP_LPAREN,SimpleKind::OP_RPAREN); }
             // Retain a mem-initializer-id; its grammar runs only at completion.
-            while (!at(SimpleKind::OP_LPAREN) && !at(SimpleKind::OP_LBRACE)) {
-                if (peek().kind==PostKind::eof || at(SimpleKind::OP_SEMICOLON)) error("member initializer");
+            while (!expected_ && (!at(SimpleKind::OP_LPAREN) && !at(SimpleKind::OP_LBRACE))) {
+                if (peek().kind==PostKind::eof || at(SimpleKind::OP_SEMICOLON)) { error("member initializer"); return; }
                 capture();
             }
             if (at(SimpleKind::OP_LPAREN)) balanced(SimpleKind::OP_LPAREN,SimpleKind::OP_RPAREN);
@@ -158,12 +163,12 @@ void SyntaxParser::defer_body(NodeId owner) {
             if (at(SimpleKind::OP_DOTS)) capture();
             if (!at(SimpleKind::OP_COMMA)) break;
             capture();
-        } while (true);
+        } while (!expected_ && (true));
     }
     balanced(SimpleKind::OP_LBRACE,SimpleKind::OP_RBRACE);
     if (function_try) {
-        if (!at(SimpleKind::KW_CATCH)) error("function try handler");
-        while (at(SimpleKind::KW_CATCH)) {
+        if (!at(SimpleKind::KW_CATCH)) { error("function try handler"); return; }
+        while (!expected_ && (at(SimpleKind::KW_CATCH))) {
             capture(); balanced(SimpleKind::OP_LPAREN,SimpleKind::OP_RPAREN);
             balanced(SimpleKind::OP_LBRACE,SimpleKind::OP_RBRACE);
         }
@@ -182,22 +187,22 @@ void SyntaxParser::defer_expression(NodeId owner, DeferredKind kind, SimpleKind 
     }
     tree_.nodes[owner].scope=region.scope;
     std::vector<SimpleKind> delimiters;
-    while (true) {
+    while (!expected_ && (true)) {
         if (delimiters.empty() && (at(close) || (kind!=DeferredKind::expression && at(SimpleKind::OP_COMMA)))) break;
-        if (peek().kind==PostKind::eof) error("complete-class expression boundary");
+        if (peek().kind==PostKind::eof) { error("complete-class expression boundary"); return; }
         auto t=take();
         if (t.kind==PostKind::simple) {
             if (t.simple==SimpleKind::OP_LPAREN) delimiters.push_back(SimpleKind::OP_RPAREN);
             else if (t.simple==SimpleKind::OP_LBRACE) delimiters.push_back(SimpleKind::OP_RBRACE);
             else if (t.simple==SimpleKind::OP_LSQUARE) delimiters.push_back(SimpleKind::OP_RSQUARE);
             else if (t.simple==SimpleKind::OP_RPAREN || t.simple==SimpleKind::OP_RBRACE || t.simple==SimpleKind::OP_RSQUARE) {
-                if (delimiters.empty() || delimiters.back()!=t.simple) error("complete-class expression delimiter");
+                if (delimiters.empty() || delimiters.back()!=t.simple) { error("complete-class expression delimiter"); return; }
                 delimiters.pop_back();
             }
         }
         region.tokens.push_back({t.kind,t.simple,t.identifier,t.range,t.location,t.literal_node});
     }
-    if (region.tokens.empty()) error("complete-class expression");
+    if (region.tokens.empty()) { error("complete-class expression"); return; }
     deferred_.push_back(std::move(region));
 }
 void SyntaxParser::finish_bodies(std::size_t first) {
@@ -210,6 +215,7 @@ void SyntaxParser::finish_bodies(std::size_t first) {
     for (std::size_t i=first;i<deferred_.size();++i) regions.push_back(std::move(deferred_[i]));
     deferred_.resize(first);
     for (auto& region:regions) {
+        if (expected_) return;
         active_.clear();
         for (SyntaxScopeId s=region.scope;s;s=tree_.scopes[s].parent) active_.push_back(s);
         std::reverse(active_.begin(),active_.end());
@@ -217,7 +223,7 @@ void SyntaxParser::finish_bodies(std::size_t first) {
         if (region.kind==DeferredKind::body) function_body(region.owner,true);
         else if (region.kind==DeferredKind::expression) tree_.append(region.owner,expression());
         else tree_.append(region.owner,initializer(region.kind==DeferredKind::equal_initializer));
-        if (peek().kind!=PostKind::eof) error("end of complete-class region");
+        if (peek().kind!=PostKind::eof) { error("end of complete-class region"); return; }
     }
     deferred_input_=outer_input; deferred_position_=outer_position;
     active_=std::move(outer_active); lookahead_=std::move(continuation);

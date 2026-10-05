@@ -32,6 +32,10 @@ cases={
  'decltype_base':'namespace n{struct base{};} struct lower:decltype(n::base()){lower():decltype(n::base())(){}};',
  'declaration_preference':'struct lower{lower(int=0,int=0); operator int() const;}; void f(int x){lower(a);lower(x,2)+x;lower b(int());}',
  'scalar_literal_retention':'struct lower{ int f(){ return 28; } const char* text="retained"; char c=\'q\'; int n{28}; };',
+ 'alias_class_definition':'using alias=struct lower { typedef int word; }; alias::word f(){return 0;}',
+ 'alias_elaborated_class':'struct lower { typedef int word; }; using alias=struct lower; alias::word f(){return 0;}',
+ 'alias_enum_definition':'using alias=enum class mode { off,on }; alias f(){return alias::on;}',
+ 'alias_chain_base':'using first=struct base { typedef int word; }; using second=first; struct lower:second { word f(word x){return x;} };',
 }
 # Every new portable case is qualified on the identical bytes by both hosts.
 with tempfile.TemporaryDirectory() as d:

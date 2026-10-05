@@ -1,8 +1,9 @@
 #include "syntax/parser.h"
 #include <algorithm>
-#include <stdexcept>
 namespace cppgm {
 const PostToken& SyntaxParser::peek(unsigned offset) {
+    // No cursor advancement or out-of-bounds borrowing after sticky failure.
+    if (expected_) { static const PostToken end=[] { PostToken token; token.kind=PostKind::eof; return token; }(); return end; }
     while (lookahead_.size()<=offset) {
         InputToken t;
         if (deferred_input_) {
@@ -23,13 +24,19 @@ const PostToken& SyntaxParser::peek(unsigned offset) {
     }
     return lookahead_[offset];
 }
-SyntaxParser::InputToken SyntaxParser::take() { peek(); InputToken t=std::move(lookahead_.front()); lookahead_.pop_front(); if (!t.name_node && !t.counted) ++tokens_; tree_.anchor=t.location; return t; }
-bool SyntaxParser::at(SimpleKind kind, unsigned offset) { const auto& t=peek(offset); return t.kind==PostKind::simple && t.simple==kind; }
+SyntaxParser::InputToken SyntaxParser::take() { if (expected_) return {}; peek(); InputToken t=std::move(lookahead_.front()); lookahead_.pop_front(); if (!t.name_node && !t.counted) ++tokens_; tree_.anchor=t.location; return t; }
+bool SyntaxParser::at(SimpleKind kind, unsigned offset) { if (expected_) return false; const auto& t=peek(offset); return t.kind==PostKind::simple && t.simple==kind; }
 bool SyntaxParser::eat(SimpleKind kind) { if (!at(kind)) return false; take(); return true; }
-void SyntaxParser::require(SimpleKind kind) { if (!eat(kind)) error(simple_name(kind)); }
-void SyntaxParser::error(const char* message) {
-    const auto& t=peek();
-    throw std::runtime_error(std::string("syntax: expected ")+message+" at line "+std::to_string(t.location.line));
+bool SyntaxParser::require(SimpleKind kind) {
+    if (expected_) return false;
+    if (eat(kind)) return true;
+    error(simple_name(kind)); return false;
+}
+NodeId SyntaxParser::error(const char* message) {
+    // Expected grammar rejection is a compact TU-local result. Render only at
+    // the explicit driver boundary, never allocate/throw during category work.
+    if (!expected_) { error_location_=peek().location; expected_=message; }
+    return 0;
 }
 bool SyntaxParser::builtin(SimpleKind k) const {
     switch (k) {
@@ -63,21 +70,25 @@ bool SyntaxParser::type_start(unsigned offset) {
     return false;
 }
 NodeId SyntaxParser::leaf(SyntaxKind k, const PostToken& t) {
+    if (expected_) return 0;
     NodeId n=t.kind==PostKind::identifier ? tree_.name(k,t.identifier,t.location) : tree_.token(k,t.simple,t.location);
     tree_.nodes[n].range=t.range; return n;
 }
 NodeId SyntaxParser::raw(SyntaxKind k, SimpleKind token) {
+    if (expected_) return 0;
     NodeId n=tree_.token(k,token); tree_.nodes[n].payload=SyntaxPayload::raw_token; return n;
 }
 NodeId SyntaxParser::name(SyntaxKind kind) {
-    if (peek().kind!=PostKind::identifier) error("identifier");
+    if (expected_) return 0;
+    if (peek().kind!=PostKind::identifier) return error("identifier");
     auto token=take();
     if (token.name_node) { tree_.nodes[token.name_node].kind=kind; return token.name_node; }
     return leaf(kind,token);
 }
 NodeId SyntaxParser::specs(bool type, bool force, NodeId result, bool has_type, bool allow_special) {
+    if (expected_) return 0;
     if (!result) result=tree_.node(type ? SyntaxKind::TypeSpecifiers : SyntaxKind::DeclSpecifiers);
-    while (true) {
+    while (!expected_ && (true)) {
         prepare_name();
         const auto t=peek();
         if (t.kind==PostKind::simple && specifier(t.simple)) {
@@ -85,10 +96,10 @@ NodeId SyntaxParser::specs(bool type, bool force, NodeId result, bool has_type, 
             SyntaxKind k=type ? (t.simple==SimpleKind::KW_CONST || t.simple==SimpleKind::KW_VOLATILE ? SyntaxKind::CvQualifier : SyntaxKind::TypeSpecifier) : SyntaxKind::DeclSpecifier;
             tree_.append(result,leaf(k,t));
         } else if (!has_type && eat(SimpleKind::KW_DECLTYPE)) {
-            has_type=true; require(SimpleKind::OP_LPAREN);
+            has_type=true; if (!require(SimpleKind::OP_LPAREN)) { return 0; }
             NodeId n=tree_.node(type ? SyntaxKind::Decltype : SyntaxKind::DeclSpecifier,t.location);
             tree_.nodes[n].is_decltype=true;
-            tree_.append(n,expression()); require(SimpleKind::OP_RPAREN); tree_.append(result,n);
+            tree_.append(n,expression()); if (!require(SimpleKind::OP_RPAREN)) { return 0; } tree_.append(result,n);
         } else if (!has_type && eat(SimpleKind::KW_TYPENAME)) {
             has_type=true; tree_.append(result,qualified(type ? SyntaxKind::TypeName : SyntaxKind::DeclSpecifier));
         } else if (!has_type && at(SimpleKind::KW_ENUM)) {
@@ -101,13 +112,13 @@ NodeId SyntaxParser::specs(bool type, bool force, NodeId result, bool has_type, 
             tree_.append(result,n);
         } else break;
     }
-    if (!has_type && !(allow_special && special_start())) error("type specifier");
+    if (!has_type && !(allow_special && special_start())) return error("type specifier");
     tree_.nodes[result].category=has_type ? Category::type : Category::unknown;
     return result;
 }
 IdentifierId SyntaxParser::declared_name(NodeId n) const {
     // Only declarator-local edges are visited; no TU scan or recursion.
-    while (n) {
+    while (!expected_ && (n)) {
         NodeId nested=0;
         for (auto e=tree_.nodes[n].first;e;e=tree_.edges[e].next) {
             NodeId c=tree_.edges[e].child;
@@ -124,9 +135,10 @@ bool SyntaxParser::function_declarator(NodeId n) const {
     return false;
 }
 NodeId SyntaxParser::parameters() {
-    require(SimpleKind::OP_LPAREN);
+    if (expected_) return 0;
+    if (!require(SimpleKind::OP_LPAREN)) { return 0; }
     NodeId result=tree_.node(SyntaxKind::Parameters);
-    while (!at(SimpleKind::OP_RPAREN)) {
+    while (!expected_ && (!at(SimpleKind::OP_RPAREN))) {
         if (eat(SimpleKind::OP_DOTS)) { tree_.append(result,raw(SyntaxKind::ParameterPack,SimpleKind::OP_DOTS)); break; }
         NodeId p=tree_.node(SyntaxKind::Parameter);
         tree_.append(p,specs());
@@ -150,18 +162,19 @@ NodeId SyntaxParser::parameters() {
         tree_.append(result,p);
         if (!eat(SimpleKind::OP_COMMA)) break;
     }
-    require(SimpleKind::OP_RPAREN); return result;
+    if (!require(SimpleKind::OP_RPAREN)) { return 0; } return result;
 }
 NodeId SyntaxParser::declarator(bool abstract, bool allow_name, bool allocation) {
+    if (expected_) return 0;
     NodeId result=tree_.node(abstract ? SyntaxKind::AbstractDeclarator : SyntaxKind::Declarator);
-    while (at(SimpleKind::OP_STAR) || at(SimpleKind::OP_AMP) || at(SimpleKind::OP_LAND) ||
-        (peek().kind==PostKind::identifier && (at(SimpleKind::OP_COLON2,1) || (lookahead_.front().name_node && tree_.nodes[lookahead_.front().name_node].member_pointer)))) {
+    while (!expected_ && (at(SimpleKind::OP_STAR) || at(SimpleKind::OP_AMP) || at(SimpleKind::OP_LAND) ||
+        (peek().kind==PostKind::identifier && (at(SimpleKind::OP_COLON2,1) || (lookahead_.front().name_node && tree_.nodes[lookahead_.front().name_node].member_pointer))))) {
         if (peek().kind==PostKind::identifier) {
             NodeId p=qualified(SyntaxKind::Pointer);
-            if (!tree_.nodes[p].member_pointer) error("member pointer operator");
+            if (!tree_.nodes[p].member_pointer) return error("member pointer operator");
             tree_.append(result,p);
         } else tree_.append(result,leaf(SyntaxKind::Pointer,take()));
-        while (at(SimpleKind::KW_CONST) || at(SimpleKind::KW_VOLATILE)) tree_.append(result,leaf(SyntaxKind::CvQualifier,take()));
+        while (!expected_ && (at(SimpleKind::KW_CONST) || at(SimpleKind::KW_VOLATILE))) tree_.append(result,leaf(SyntaxKind::CvQualifier,take()));
     }
     if (eat(SimpleKind::OP_DOTS)) tree_.append(result,raw(SyntaxKind::ParameterPack,SimpleKind::OP_DOTS));
     if (allow_name && (peek().kind==PostKind::identifier || at(SimpleKind::KW_OPERATOR))) {
@@ -170,21 +183,22 @@ NodeId SyntaxParser::declarator(bool abstract, bool allow_name, bool allocation)
     }
     else if (at(SimpleKind::OP_LPAREN) && (at(SimpleKind::OP_STAR,1) || at(SimpleKind::OP_AMP,1) || at(SimpleKind::OP_LAND,1) || (peek(1).kind==PostKind::identifier && (!type_start(1) || at(SimpleKind::OP_COLON2,2))))) {
         take(); NodeId nested=tree_.node(SyntaxKind::NestedDeclarator);
-        tree_.append(nested,declarator(abstract,allow_name)); require(SimpleKind::OP_RPAREN); tree_.append(result,nested);
+        tree_.append(nested,declarator(abstract,allow_name)); if (!require(SimpleKind::OP_RPAREN)) { return 0; } tree_.append(result,nested);
     }
     if (eat(SimpleKind::OP_DOTS)) tree_.append(result,raw(SyntaxKind::ParameterPack,SimpleKind::OP_DOTS));
     return suffixes(result,allocation);
 }
 NodeId SyntaxParser::suffixes(NodeId result, bool allocation) {
-    while (true) {
+    if (expected_) return 0;
+    while (!expected_ && (true)) {
         attributes(result);
         if (eat(SimpleKind::OP_LSQUARE)) {
             NodeId a=tree_.node(SyntaxKind::ArraySuffix);
             if (!at(SimpleKind::OP_RSQUARE)) tree_.append(a,expression(2));
-            require(SimpleKind::OP_RSQUARE); tree_.append(result,a);
+            if (!require(SimpleKind::OP_RSQUARE)) { return 0; } tree_.append(result,a);
         } else if (!allocation && at(SimpleKind::OP_LPAREN) && (at(SimpleKind::OP_RPAREN,1) || at(SimpleKind::OP_DOTS,1) || type_start(1))) {
             tree_.append(result,parameters());
-            while (at(SimpleKind::KW_CONST) || at(SimpleKind::KW_VOLATILE) || at(SimpleKind::OP_AMP) || at(SimpleKind::OP_LAND) || at(SimpleKind::KW_NOEXCEPT) || at(SimpleKind::KW_THROW)) {
+            while (!expected_ && (at(SimpleKind::KW_CONST) || at(SimpleKind::KW_VOLATILE) || at(SimpleKind::OP_AMP) || at(SimpleKind::OP_LAND) || at(SimpleKind::KW_NOEXCEPT) || at(SimpleKind::KW_THROW))) {
                 PostToken t=take(); NodeId q=(t.simple==SimpleKind::KW_CONST || t.simple==SimpleKind::KW_VOLATILE) ? leaf(SyntaxKind::CvQualifier,t) : raw(SyntaxKind::FunctionQualifier,t.simple);
                 if ((t.simple==SimpleKind::KW_NOEXCEPT || t.simple==SimpleKind::KW_THROW) && eat(SimpleKind::OP_LPAREN)) {
                     if (t.simple==SimpleKind::KW_NOEXCEPT) {
@@ -192,16 +206,16 @@ NodeId SyntaxParser::suffixes(NodeId result, bool allocation) {
                         else tree_.append(q,expression());
                     }
                     else {
-                        while (!at(SimpleKind::OP_RPAREN)) {
+                        while (!expected_ && (!at(SimpleKind::OP_RPAREN))) {
                             tree_.append(q,type_id()); if (!eat(SimpleKind::OP_COMMA)) break;
                         }
                     }
-                    require(SimpleKind::OP_RPAREN);
+                    if (!require(SimpleKind::OP_RPAREN)) { return 0; }
                     tree_.nodes[q].has_parentheses=true; // qualifier has a parenthesized operand, including empty throw()
                 }
                 tree_.append(result,q);
             }
-            while (peek().kind==PostKind::identifier && (peek().identifier==override_id_ || peek().identifier==final_id_)) tree_.append(result,name(SyntaxKind::VirtSpecifier));
+            while (!expected_ && (peek().kind==PostKind::identifier && (peek().identifier==override_id_ || peek().identifier==final_id_))) tree_.append(result,name(SyntaxKind::VirtSpecifier));
             if (eat(SimpleKind::OP_ARROW)) {
                 NodeId t=type_id(); NodeId r=tree_.node(SyntaxKind::TrailingReturn);
                 // Surface type text remains a rendering view; structure drives later use.
@@ -215,21 +229,24 @@ NodeId SyntaxParser::suffixes(NodeId result, bool allocation) {
     return result;
 }
 NodeId SyntaxParser::type_id(bool allocation, bool force) {
+    if (expected_) return 0;
     NodeId result=tree_.node(SyntaxKind::TypeId); tree_.append(result,specs(true,force));
     if (at(SimpleKind::OP_STAR) || at(SimpleKind::OP_AMP) || at(SimpleKind::OP_LAND) || at(SimpleKind::OP_LSQUARE) ||
         (at(SimpleKind::OP_LPAREN) && (at(SimpleKind::OP_STAR,1) || at(SimpleKind::OP_AMP,1) || at(SimpleKind::OP_LAND,1) || type_start(1) || (!allocation && at(SimpleKind::OP_RPAREN,1))))) tree_.append(result,declarator(true,false,allocation));
     return result;
 }
 NodeId SyntaxParser::list(SyntaxKind kind, SimpleKind close) {
+    if (expected_) return 0;
     NodeId result=tree_.node(kind);
-    while (!at(close)) {
+    while (!expected_ && (!at(close))) {
         tree_.append(result,at(SimpleKind::OP_LBRACE) ? initializer() : expression(2));
         if (!eat(SimpleKind::OP_COMMA)) break;
         if (close==SimpleKind::OP_RBRACE && at(close)) break;
     }
-    require(close); return result;
+    if (!require(close)) { return 0; } return result;
 }
 NodeId SyntaxParser::initializer(bool equal) {
+    if (expected_) return 0;
     if (eat(SimpleKind::OP_LBRACE)) {
         NodeId b=list(SyntaxKind::BracedInit,SimpleKind::OP_RBRACE);
         if (!equal) return b;
@@ -241,11 +258,13 @@ NodeId SyntaxParser::initializer(bool equal) {
     return result;
 }
 NodeId SyntaxParser::declaration() {
+    if (expected_) return 0;
     NodeId attrs=attributes(); NodeId result=declaration_impl();
     if (attrs) tree_.append(result,attrs);
     return result;
 }
 NodeId SyntaxParser::declaration_impl() {
+    if (expected_) return 0;
     if (at(SimpleKind::KW_NAMESPACE) || (at(SimpleKind::KW_INLINE) && at(SimpleKind::KW_NAMESPACE,1))) return namespace_declaration();
     if (at(SimpleKind::KW_ENUM)) {
         NodeId e=enum_specifier();
@@ -256,11 +275,11 @@ NodeId SyntaxParser::declaration_impl() {
     }
     if (eat(SimpleKind::OP_SEMICOLON)) return tree_.node(SyntaxKind::EmptyDeclaration);
     if (eat(SimpleKind::KW_STATIC_ASSERT)) {
-        NodeId result=tree_.node(SyntaxKind::StaticAssert); require(SimpleKind::OP_LPAREN);
-        tree_.append(result,expression(2)); require(SimpleKind::OP_COMMA);
-        auto t=take(); if (t.kind!=PostKind::array) error("string literal");
+        NodeId result=tree_.node(SyntaxKind::StaticAssert); if (!require(SimpleKind::OP_LPAREN)) { return 0; }
+        tree_.append(result,expression(2)); if (!require(SimpleKind::OP_COMMA)) { return 0; }
+        auto t=take(); if (t.kind!=PostKind::array) return error("string literal");
         NodeId message=t.literal_node; tree_.nodes[message].kind=SyntaxKind::Message; tree_.append(result,message);
-        require(SimpleKind::OP_RPAREN); require(SimpleKind::OP_SEMICOLON); return result;
+        if (!require(SimpleKind::OP_RPAREN)) { return 0; } if (!require(SimpleKind::OP_SEMICOLON)) { return 0; } return result;
     }
     if (at(SimpleKind::KW_USING)) return using_declaration();
     if (at(SimpleKind::KW_EXTERN) && peek(1).kind==PostKind::array) {
@@ -272,7 +291,7 @@ NodeId SyntaxParser::declaration_impl() {
         node.offset=tree_.spellings.size(); node.length=text.size();
         tree_.spellings.insert(tree_.spellings.end(),text.begin(),text.end());
         if (eat(SimpleKind::OP_LBRACE)) {
-            while (!at(SimpleKind::OP_RBRACE)) tree_.append(result,declaration());
+            while (!expected_ && (!at(SimpleKind::OP_RBRACE))) tree_.append(result,declaration());
             take();
         } else tree_.append(result,declaration());
         return result;
@@ -289,6 +308,7 @@ NodeId SyntaxParser::declaration_impl() {
     return declaration_tail(specs(false,false,0,false,true),typedef_decl);
 }
 NodeId SyntaxParser::declaration_tail(NodeId spec, bool typedef_decl) {
+    if (expected_) return 0;
     if (tree_.nodes[spec].category==Category::unknown && special_start()) return special_member(spec);
     NodeId result=tree_.node(SyntaxKind::SimpleDeclaration); tree_.append(result,spec);
     SyntaxScopeId alias_target=0;
@@ -301,14 +321,14 @@ NodeId SyntaxParser::declaration_tail(NodeId spec, bool typedef_decl) {
     }
     if (eat(SimpleKind::OP_SEMICOLON)) return result;
     NodeId init_list=0;
-    while (true) {
+    while (!expected_ && (true)) {
         enter(); // parameters' scope extends through this function's body, not sibling declarations
         const bool unnamed_bit=at(SimpleKind::OP_COLON);
         NodeId d=unnamed_bit ? 0 : declarator(); if (d) tree_.nodes[d].scope=active_.back(); IdentifierId id=declared_name(d);
         if (!id && !at(SimpleKind::OP_COLON)) {
             bool operator_name=false;
             for (auto e=tree_.nodes[d].first;e;e=tree_.edges[e].next) operator_name |= tree_.nodes[tree_.edges[e].child].is_operator || tree_.nodes[tree_.edges[e].child].operator_literal || tree_.nodes[tree_.edges[e].child].operator_conversion;
-            if (!operator_name) error("named declarator");
+            if (!operator_name) return error("named declarator");
         }
         if (function_declarator(d) && (at(SimpleKind::OP_LBRACE) || at(SimpleKind::KW_TRY))) {
             tree_.nodes[result].kind=SyntaxKind::FunctionDefinition;
@@ -323,7 +343,7 @@ NodeId SyntaxParser::declaration_tail(NodeId spec, bool typedef_decl) {
             tree_.append(bit,expression(2)); tree_.append(result,bit);
             leave(); bind(id,Category::value);
             if (eat(SimpleKind::OP_COMMA)) continue;
-            require(SimpleKind::OP_SEMICOLON); return result;
+            if (!require(SimpleKind::OP_SEMICOLON)) { return 0; } return result;
         }
         leave(); bind(id,typedef_decl ? Category::type : Category::value,typedef_decl ? alias_target : 0);
         NodeId init=tree_.node(SyntaxKind::InitDeclarator); tree_.append(init,d);
@@ -345,12 +365,13 @@ NodeId SyntaxParser::declaration_tail(NodeId spec, bool typedef_decl) {
         tree_.append(init_list,init);
         if (!eat(SimpleKind::OP_COMMA)) break;
     }
-    require(SimpleKind::OP_SEMICOLON); tree_.append(result,init_list); return result;
+    if (!require(SimpleKind::OP_SEMICOLON)) { return 0; } tree_.append(result,init_list); return result;
 }
 NodeId SyntaxParser::parse() {
+    if (expected_) return 0;
     tree_.anchor=peek().location;
     NodeId root=tree_.node(SyntaxKind::TranslationUnit); tree_.nodes[root].scope=active_.back();
-    while (peek().kind!=PostKind::eof) tree_.append(root,declaration());
-    return root;
+    while (!expected_ && (peek().kind!=PostKind::eof)) tree_.append(root,declaration());
+    return expected_ ? 0 : root;
 }
 }

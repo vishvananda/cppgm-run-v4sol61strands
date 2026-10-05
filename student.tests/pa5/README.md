@@ -120,3 +120,19 @@ nested-angle, specialization/instantiation and dependent-conversion observations
 The latter also fails in the reference and is reported separately; required
 course comparisons remain unchanged. Passing class-only special-member probes
 does not imply template-qualified special members are implemented.
+
+## Checkpoint audit controls
+
+`classes.py` also qualifies aliases of class definitions, elaborated class types,
+scoped enum definitions and alias-chain/base interactions with GCC, Clang and
+exact reference AST comparisons. Alias bindings retain the owned/resolved scope
+ID, not a rendered name. `python3 student.tests/pa5/rejection.py` checks 158
+fixed source prefixes for clean success/rejection without signals or hangs;
+set `PA5_TOOL` to a sanitizer build to inspect partially built scopes and
+complete-class queues. Syntax rejection now propagates a compact parser-local
+failure; only the explicit driver renders its location/expectation.
+
+Audit performance evidence (including pre/post rendering fixes and raw spread)
+is under `$RALPH_ARTIFACT_DIR/pa5/audit12`; `pa5/audit.md` identifies the frozen
+binary and protocol. Historical measurements remain in the artifact tree and
+git history; no prior target or stage-due control was weakened.

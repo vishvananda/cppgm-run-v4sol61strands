@@ -12,7 +12,7 @@ SyntaxScopeId SyntaxParser::create_scope(SyntaxScopeId parent, bool namespace_sc
 }
 SyntaxScopeId SyntaxParser::common_namespace(SyntaxScopeId a, SyntaxScopeId b) const {
     a=tree_.scopes[a].nearest_namespace; b=tree_.scopes[b].nearest_namespace;
-    while (a!=b) {
+    while (!expected_ && (a!=b)) {
         if (tree_.scopes[a].namespace_depth>=tree_.scopes[b].namespace_depth) a=tree_.scopes[a].namespace_parent;
         else b=tree_.scopes[b].namespace_parent;
     }
@@ -57,7 +57,7 @@ SyntaxBinding SyntaxParser::lookup(IdentifierId id, SyntaxScopeId scope, bool pa
         // Base lookup is a class-local step, unlike using-directive nominations.
         // Generation stamps bound diamond/cyclic syntax visits to once/query.
         std::vector<SyntaxScopeId> base_work(tree_.scopes[scope].bases);
-        while (!base_work.empty()) {
+        while (!expected_ && (!base_work.empty())) {
             auto next=base_work.back(); base_work.pop_back(); auto& env=tree_.scopes[next];
             if (env.visited==serial) continue;
             env.visited=serial;
@@ -67,7 +67,7 @@ SyntaxBinding SyntaxParser::lookup(IdentifierId id, SyntaxScopeId scope, bool pa
         }
         std::vector<SyntaxScopeId> work;
         for (auto imported:tree_.scopes[scope].imports) work.push_back(imported);
-        while (!work.empty()) {
+        while (!expected_ && (!work.empty())) {
             auto next=work.back(); work.pop_back(); auto& env=tree_.scopes[next];
             if (env.visited==serial) continue;
             env.visited=serial;
@@ -105,22 +105,23 @@ void SyntaxParser::prepare_name(unsigned offset) {
     if (!at(SimpleKind::OP_COLON2,offset) &&
         !(peek(offset).kind==PostKind::identifier && at(SimpleKind::OP_COLON2,offset+1))) return;
     std::deque<InputToken> prefix;
-    while (offset--) { prefix.push_back(std::move(lookahead_.front())); lookahead_.pop_front(); }
+    while (!expected_ && (offset--)) { prefix.push_back(std::move(lookahead_.front())); lookahead_.pop_front(); }
     auto original=lookahead_.front();
     NodeId n=qualified_raw(SyntaxKind::Identifier);
     original.kind=PostKind::identifier; original.identifier=tree_.nodes[n].terminal_name; original.name_node=n;
     lookahead_.push_front(std::move(original));
-    while (!prefix.empty()) { lookahead_.push_front(std::move(prefix.back())); prefix.pop_back(); }
+    while (!expected_ && (!prefix.empty())) { lookahead_.push_front(std::move(prefix.back())); prefix.pop_back(); }
 }
 NodeId SyntaxParser::namespace_declaration() {
-    bool inlined=eat(SimpleKind::KW_INLINE); require(SimpleKind::KW_NAMESPACE);
+    if (expected_) return 0;
+    bool inlined=eat(SimpleKind::KW_INLINE); if (!require(SimpleKind::KW_NAMESPACE)) { return 0; }
     NodeId result=0; IdentifierId id=0;
     if (peek().kind==PostKind::identifier) { result=name(SyntaxKind::Namespace); id=tree_.nodes[result].name; }
     else result=tree_.text(SyntaxKind::Namespace,"<unnamed>");
     if (eat(SimpleKind::OP_ASS)) {
-        if (!id || inlined) error("namespace alias name");
+        if (!id || inlined) return error("namespace alias name");
         tree_.nodes[result].kind=SyntaxKind::NamespaceAlias;
-        NodeId target=qualified(SyntaxKind::Target,true); tree_.append(result,target); require(SimpleKind::OP_SEMICOLON);
+        NodeId target=qualified(SyntaxKind::Target,true); tree_.append(result,target); if (!require(SimpleKind::OP_SEMICOLON)) { return 0; }
         bind(id,Category::space,tree_.nodes[target].resolved_scope); return result;
     }
     auto& names=tree_.scopes[active_.back()].names;
@@ -132,41 +133,46 @@ NodeId SyntaxParser::namespace_declaration() {
     if (!id) tree_.scopes[active_.back()].names[0]={Category::space,scope,scope};
     if (inlined || !id) import_scope(active_.back(),scope);
     if (inlined) tree_.append(result,tree_.node(SyntaxKind::Inline));
-    require(SimpleKind::OP_LBRACE); enter(scope);
-    while (!at(SimpleKind::OP_RBRACE)) {
-        if (peek().kind==PostKind::eof) error("namespace closing brace");
+    if (!require(SimpleKind::OP_LBRACE)) { return 0; } enter(scope);
+    while (!expected_ && (!at(SimpleKind::OP_RBRACE))) {
+        if (peek().kind==PostKind::eof) return error("namespace closing brace");
         tree_.append(result,declaration());
     }
     take(); leave(); return result;
 }
 NodeId SyntaxParser::using_declaration() {
-    require(SimpleKind::KW_USING);
+    if (expected_) return 0;
+    if (!require(SimpleKind::KW_USING)) { return 0; }
     if (eat(SimpleKind::KW_NAMESPACE)) {
         NodeId result=tree_.node(SyntaxKind::UsingDirective), target=qualified(SyntaxKind::Target,true);
-        tree_.append(result,target); require(SimpleKind::OP_SEMICOLON);
+        tree_.append(result,target); if (!require(SimpleKind::OP_SEMICOLON)) { return 0; }
         auto scope=tree_.nodes[target].resolved_scope;
         import_scope(active_.back(),scope);
         return result;
     }
     if (peek().kind==PostKind::identifier && at(SimpleKind::OP_ASS,1)) {
         auto id=take(); take(); NodeId result=leaf(SyntaxKind::Alias,id), type=type_id(false,true);
-        tree_.append(result,type); require(SimpleKind::OP_SEMICOLON);
+        tree_.append(result,type); if (!require(SimpleKind::OP_SEMICOLON)) { return 0; }
         NodeId spec=tree_.child(tree_.child(type));
-        bind(id.identifier,Category::type,tree_.nodes[spec].resolved_scope); return result;
+        // Class/enum specifiers own a scope; qualified type names resolve one.
+        // Preserve that identity across alias syntax without rendering its name.
+        const auto& base=tree_.nodes[spec];
+        bind(id.identifier,Category::type,base.resolved_scope ? base.resolved_scope : base.scope); return result;
     }
     bool typename_name=eat(SimpleKind::KW_TYPENAME);
     NodeId result=tree_.node(SyntaxKind::UsingDeclaration), target=qualified(SyntaxKind::Target);
-    tree_.append(result,target); require(SimpleKind::OP_SEMICOLON);
+    tree_.append(result,target); if (!require(SimpleKind::OP_SEMICOLON)) { return 0; }
     const auto& n=tree_.nodes[target];
     bind(n.terminal_name,typename_name ? Category::type : n.category,n.resolved_scope);
     return result;
 }
 NodeId SyntaxParser::enum_specifier() {
+    if (expected_) return 0;
     auto keyword=take(); NodeId key=0;
     if (at(SimpleKind::KW_CLASS) || at(SimpleKind::KW_STRUCT)) key=leaf(SyntaxKind::EnumKey,take());
     NodeId result=peek().kind==PostKind::identifier ? qualified(SyntaxKind::Enum) : tree_.node(SyntaxKind::Enum,keyword.location);
     IdentifierId id=tree_.nodes[result].terminal_name;
-    if (!id && !at(SimpleKind::OP_LBRACE)) error("enum name or body");
+    if (!id && !at(SimpleKind::OP_LBRACE)) return error("enum name or body");
     if (key) tree_.append(result,key);
     auto prior=id ? lookup(id,active_.back(),false) : SyntaxBinding{};
     auto scope=prior.target ? prior.target : create_scope(active_.back());
@@ -175,7 +181,7 @@ NodeId SyntaxParser::enum_specifier() {
     if (eat(SimpleKind::OP_COLON)) tree_.append(result,type_id());
     if (!eat(SimpleKind::OP_LBRACE)) return result;
     enter(scope);
-    while (!at(SimpleKind::OP_RBRACE)) {
+    while (!expected_ && (!at(SimpleKind::OP_RBRACE))) {
         NodeId n=name(SyntaxKind::Enumerator); auto enumerator=tree_.nodes[n].name;
         bind(enumerator,Category::value);
         if (!key) {
@@ -189,7 +195,7 @@ NodeId SyntaxParser::enum_specifier() {
         tree_.append(result,n);
         if (!eat(SimpleKind::OP_COMMA)) break;
     }
-    require(SimpleKind::OP_RBRACE); leave();
+    if (!require(SimpleKind::OP_RBRACE)) { return 0; } leave();
     return result;
 }
 }

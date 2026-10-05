@@ -17,7 +17,13 @@ int emit_ast(const std::string& output, const std::vector<std::string>& inputs, 
         auto start=std::chrono::steady_clock::now();
         IdentifierTable ids; Preprocessor pp(ids,inputs[i],date,time,telemetry);
         PostCursor cursor(pp,ids,true); SyntaxTree tree; SyntaxParser parser(cursor,ids,tree);
-        NodeId root=parser.parse(); auto parsed=std::chrono::steady_clock::now();
+        NodeId root=parser.parse();
+        if (!root) {
+            std::cerr << "ERROR: syntax: expected " << parser.expected()
+                      << " at line " << parser.error_location().line << '\n';
+            return EXIT_FAILURE;
+        }
+        auto parsed=std::chrono::steady_clock::now();
         out << "start translation unit " << i+1 << '\n'; tree.dump(out,ids,root); out << "end translation unit\n";
         if (telemetry) {
             auto done=std::chrono::steady_clock::now();

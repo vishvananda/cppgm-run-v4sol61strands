@@ -59,8 +59,10 @@ class SyntaxParser {
     const PostToken& peek(unsigned offset=0);
     bool at(SimpleKind, unsigned offset=0);
     bool eat(SimpleKind);
-    void require(SimpleKind);
-    [[noreturn]] void error(const char*);
+    bool require(SimpleKind);
+    NodeId error(const char*);
+    const char* expected_ = nullptr;
+    SourceLocation error_location_;
     void enter();
     void leave();
     Category category(IdentifierId);
@@ -103,6 +105,8 @@ public:
     SyntaxParser(PostCursor& cursor, IdentifierTable& ids, SyntaxTree& tree)
         : cursor_(cursor), ids_(ids), tree_(tree), final_id_(ids.intern("final")), override_id_(ids.intern("override")), attribute_id_(ids.intern("__attribute__")) { tree_.scopes.emplace_back(); enter(); }
     NodeId parse();
+    const char* expected() const { return expected_; }
+    SourceLocation error_location() const { return error_location_; }
     std::size_t tokens() const { return tokens_; }
     std::size_t queries() const { return queries_; }
     std::size_t max_lookahead() const { return max_lookahead_; }
