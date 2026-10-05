@@ -19,6 +19,7 @@ struct PreprocessorMetrics {
     std::size_t source_bytes = 0, source_tokens = 0, expanded = 0;
     std::size_t invocations = 0, argument_tokens = 0, paste_tokens = 0;
     std::size_t lookups = 0, max_pending = 0, files = 0;
+    std::size_t paint_nodes = 0, paint_queries = 0, paint_cache_hits = 0;
 };
 // TU-local ownership, indexed definitions and persistent nesting paint.
 // No output dump is ever reparsed by the next production phase.
@@ -39,7 +40,15 @@ private:
     PreprocessorMetrics& metrics_;
     std::vector<std::uint32_t> bindings_;
     std::vector<Macro> definitions_;
+    std::vector<std::uint32_t> free_definitions_;
     std::vector<Paint> paints_;
+    // Cache key is (immutable paint root, interned macro ID); extensions stay
+    // valid throughout this TU, independent of macro redefinition.
+    struct Extension { std::uint32_t paint, macro, result; };
+    std::vector<Extension> extensions_;
+    std::vector<std::uint32_t> extension_slots_;
+    void grow_extensions();
+    std::vector<int> parameter_slots_;
     IdentifierId va_;
     bool painted(std::uint32_t paint, IdentifierId name) const;
     std::uint32_t add_paint(std::uint32_t paint, IdentifierId name);
@@ -55,6 +64,7 @@ public:
     // pending is the bounded rescan stack; pull false marks text-sequence end.
     bool next(PPItem&, std::vector<PPItem>& pending, const Pull&, const Builtin&);
     std::vector<PPItem> expand(const std::vector<PPItem>&, const Builtin&);
+    std::vector<PPItem> expand_owned(std::vector<PPItem>, const Builtin&);
     PPItem synthetic(const std::string&, const PPItem&);
 };
 

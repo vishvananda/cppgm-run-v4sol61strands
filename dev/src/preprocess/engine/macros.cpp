@@ -35,10 +35,33 @@ std::uint32_t MacroEngine::insert_paint(std::uint32_t p, IdentifierId id, unsign
     Paint node=p?paints_[p]:Paint{{0,0}};
     unsigned side=(id>>bit)&1;
     node.child[side]=insert_paint(node.child[side],id,bit+1);
-    paints_.push_back(node); return paints_.size()-1;
+    paints_.push_back(node); metrics_.paint_nodes=paints_.size(); return paints_.size()-1;
+}
+void MacroEngine::grow_extensions() {
+    extension_slots_.assign(extension_slots_.empty()?64:extension_slots_.size()*2,0);
+    for(std::size_t i=0;i<extensions_.size();++i) {
+        const auto& e=extensions_[i];
+        std::uint64_t hash=(std::uint64_t(e.paint)<<32)|e.macro;
+        hash^=hash>>33; hash*=0xff51afd7ed558ccdULL; hash^=hash>>33;
+        std::size_t slot=hash&(extension_slots_.size()-1);
+        while(extension_slots_[slot]) slot=(slot+1)&(extension_slots_.size()-1);
+        extension_slots_[slot]=i+1;
+    }
 }
 std::uint32_t MacroEngine::add_paint(std::uint32_t p, IdentifierId id) {
-    return painted(p,id)?p:insert_paint(p,id,0);
+    ++metrics_.paint_queries;
+    if(extension_slots_.empty() || (extensions_.size()+1)*4>extension_slots_.size()*3) grow_extensions();
+    std::uint64_t hash=(std::uint64_t(p)<<32)|id;
+    hash^=hash>>33; hash*=0xff51afd7ed558ccdULL; hash^=hash>>33;
+    std::size_t slot=hash&(extension_slots_.size()-1);
+    while(extension_slots_[slot]) {
+        const auto& e=extensions_[extension_slots_[slot]-1];
+        if(e.paint==p && e.macro==id) {++metrics_.paint_cache_hits; return e.result;}
+        slot=(slot+1)&(extension_slots_.size()-1);
+    }
+    std::uint32_t result=painted(p,id)?p:insert_paint(p,id,0);
+    extensions_.push_back({p,id,result}); extension_slots_[slot]=extensions_.size();
+    return result;
 }
 std::uint32_t MacroEngine::merge_paint(std::uint32_t a, std::uint32_t b, unsigned bit) {
     if (!a || a==b) return b;
@@ -47,7 +70,7 @@ std::uint32_t MacroEngine::merge_paint(std::uint32_t a, std::uint32_t b, unsigne
                  merge_paint(paints_[a].child[1],paints_[b].child[1],bit+1)}};
     if(node.child[0]==paints_[a].child[0] && node.child[1]==paints_[a].child[1]) return a;
     if(node.child[0]==paints_[b].child[0] && node.child[1]==paints_[b].child[1]) return b;
-    paints_.push_back(node); return paints_.size()-1;
+    paints_.push_back(node); metrics_.paint_nodes=paints_.size(); return paints_.size()-1;
 }
 std::uint32_t MacroEngine::intersect_paint(std::uint32_t a, std::uint32_t b, unsigned bit) {
     if (!a || !b) return 0;
@@ -57,7 +80,7 @@ std::uint32_t MacroEngine::intersect_paint(std::uint32_t a, std::uint32_t b, uns
     if(!node.child[0] && !node.child[1]) return 0;
     if(node.child[0]==paints_[a].child[0] && node.child[1]==paints_[a].child[1]) return a;
     if(node.child[0]==paints_[b].child[0] && node.child[1]==paints_[b].child[1]) return b;
-    paints_.push_back(node); return paints_.size()-1;
+    paints_.push_back(node); metrics_.paint_nodes=paints_.size(); return paints_.size()-1;
 }
 PPItem MacroEngine::synthetic(const std::string& text, const PPItem& origin) {
     SourceBuffer source(text); Lexer lexer(source,identifiers_, options());
@@ -78,10 +101,14 @@ void MacroEngine::define(const std::vector<PPItem>& v) {
         m.function = true; ++i;
         if (i < v.size() && !punctuation(v[i],")")) for (;;) {
             require(i < v.size(), "unterminated macro parameters");
-            if (punctuation(v[i],"...")) { m.variadic = true; m.parameters.push_back(va_); ++i; break; }
+            if (punctuation(v[i],"...")) { m.variadic = true;
+                if(parameter_slots_.size()<=va_) parameter_slots_.resize(va_+1,-1);
+                parameter_slots_[va_]=m.parameters.size(); m.parameters.push_back(va_); ++i; break; }
             require(v[i].token.kind == TokenKind::identifier && v[i].token.identifier != va_, "invalid macro parameter");
             IdentifierId id = v[i++].token.identifier;
-            require(std::find(m.parameters.begin(),m.parameters.end(),id) == m.parameters.end(), "duplicate macro parameter");
+            if(parameter_slots_.size()<=id) parameter_slots_.resize(id+1,-1);
+            require(parameter_slots_[id]<0,"duplicate macro parameter");
+            parameter_slots_[id]=m.parameters.size();
             m.parameters.push_back(id);
             require(i < v.size(), "unterminated macro parameters");
             if (punctuation(v[i],")")) break;
@@ -93,11 +120,12 @@ void MacroEngine::define(const std::vector<PPItem>& v) {
         Replacement r; r.item = v[i];
         require(v[i].token.identifier != va_ || m.variadic, "__VA_ARGS__ outside variadic macro");
         if (v[i].token.kind == TokenKind::identifier) {
-            auto p = std::find(m.parameters.begin(), m.parameters.end(), v[i].token.identifier);
-            if (p != m.parameters.end()) r.parameter = p-m.parameters.begin();
+            const IdentifierId id=v[i].token.identifier;
+            if(id<parameter_slots_.size()) r.parameter=parameter_slots_[id];
         }
         m.replacement.push_back(std::move(r));
     }
+    for(IdentifierId id:m.parameters) parameter_slots_[id]=-1;
     for (std::size_t j=0;j<m.replacement.size();++j) {
         const auto& r = m.replacement[j];
         if (paste(r.item)) require(j && j+1<m.replacement.size(), "## at replacement edge");
@@ -111,11 +139,18 @@ void MacroEngine::define(const std::vector<PPItem>& v) {
         require(same,"incompatible macro redefinition"); return;
     }
     if (bindings_.size()<=m.name) bindings_.resize(m.name+1);
-    bindings_[m.name] = definitions_.size()+1; definitions_.push_back(std::move(m));
+    std::uint32_t slot;
+    if(free_definitions_.empty()) {slot=definitions_.size(); definitions_.emplace_back();}
+    else {slot=free_definitions_.back();free_definitions_.pop_back();}
+    bindings_[m.name]=slot+1; definitions_[slot]=std::move(m);
 }
 void MacroEngine::undefine(const std::vector<PPItem>& v) {
     require(v.size()==1 && v[0].token.kind==TokenKind::identifier && v[0].token.identifier!=va_, "invalid undef");
-    if (v[0].token.identifier < bindings_.size()) bindings_[v[0].token.identifier]=0;
+    IdentifierId id=v[0].token.identifier;
+    if(defined(id)) {
+        std::uint32_t slot=bindings_[id]-1;
+        definitions_[slot]=Macro(); free_definitions_.push_back(slot); bindings_[id]=0;
+    }
 }
 void MacroEngine::substitute(const Macro& m, const PPItem& head, std::uint32_t replacement_paint, const std::vector<std::vector<PPItem>>& args, std::vector<PPItem>& out, const Builtin& builtin) {
     std::vector<std::vector<PPItem>> expanded(args.size());
@@ -233,6 +268,13 @@ bool MacroEngine::next(PPItem& result, std::vector<PPItem>& pending, const Pull&
         metrics_.max_pending=std::max(metrics_.max_pending,pending.size());
     }
     return false;
+}
+std::vector<PPItem> MacroEngine::expand_owned(std::vector<PPItem> input, const Builtin& builtin) {
+    std::size_t pos=0; std::vector<PPItem> pending, out; PPItem p;
+    out.reserve(input.size());
+    Pull pull=[&](PPItem& t){ if(pos==input.size()) return false; t=std::move(input[pos++]); return true; };
+    while (next(p,pending,pull,builtin)) out.push_back(std::move(p));
+    return out;
 }
 std::vector<PPItem> MacroEngine::expand(const std::vector<PPItem>& input, const Builtin& builtin) {
     std::size_t pos=0; std::vector<PPItem> pending, out; PPItem p;

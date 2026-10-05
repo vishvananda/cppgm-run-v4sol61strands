@@ -30,7 +30,7 @@ int main(int argc,char** argv) {
             out<<"eof\n";
             if(std::getenv("CPPGM_METRICS")) {
                 const auto& m=preprocessor.metrics();
-                std::cerr<<"preproc bytes="<<m.source_bytes<<" source_tokens="<<m.source_tokens<<" expanded="<<m.expanded<<" invocations="<<m.invocations<<" argument_tokens="<<m.argument_tokens<<" pastes="<<m.paste_tokens<<" lookups="<<m.lookups<<" max_pending="<<m.max_pending<<" files="<<m.files<<" seconds="<<std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count()<<'\n';
+                std::cerr<<"preproc bytes="<<m.source_bytes<<" source_tokens="<<m.source_tokens<<" expanded="<<m.expanded<<" invocations="<<m.invocations<<" argument_tokens="<<m.argument_tokens<<" pastes="<<m.paste_tokens<<" lookups="<<m.lookups<<" max_pending="<<m.max_pending<<" paint_nodes="<<m.paint_nodes<<" paint_queries="<<m.paint_queries<<" paint_cache_hits="<<m.paint_cache_hits<<" files="<<m.files<<" seconds="<<std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count()<<'\n';
             }
         }
         if(!out) throw std::runtime_error("output write failed");

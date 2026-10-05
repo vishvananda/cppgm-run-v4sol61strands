@@ -29,6 +29,14 @@ pass. Remaining: repeated performance controls, sanitizer/architecture checks,
 then revalidate and record independent questions.
 
 ## Performance evidence
+Initial seven-family perf/time run found invocation-linear paint storage (133 MiB
+paste, 132 MiB repeated arguments). Profiles identified radix insertion; cache
+immutable (root, macro-ID) extensions in a flat table. Three-run paired final
+run includes frozen pre-fix binaries: 300k aliases now 98 paint nodes, 5 MiB vs
+516 MiB; 1521M vs 2534M instructions. Repeated include cache removes stat work;
+shared immutable file buffers preserve locations. Raw data at
+`$RALPH_ARTIFACT_DIR/pa4-perf/{initial,singleton,owned,final}`. Timing spread on
+conditional workload remains inconclusive; retain observations, no speed claim.
 Pending: freeze stage-supported macro-heavy workloads; warm up and pin host,
 student and reference; collect >=3 simultaneous instructions:u/cycles:u runs,
 wall/user/system/RSS; compare output equivalence before interpreting costs.

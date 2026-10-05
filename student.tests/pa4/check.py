@@ -84,6 +84,17 @@ for count in (1000, 10000, 30000):
     assert records(invoke(source)) == ['identifier done']*4
     portable(source, 'done '*4)
 
+# Repeated aliases reuse immutable paint facts instead of allocating per call.
+source='#define A B\n#define B C\n#define C done\n'+'A\n'*100000
+assert records(invoke(source))==['identifier done']*100000
+portable(source,'done '*100000)
+# Undef/redefine releases definition storage rather than retaining history.
+source=''.join('#define A done\nA\n#undef A\n' for _ in range(20000))
+assert records(invoke(source))==['identifier done']*20000
+portable(source,'done '*20000)
+# Includes without once replay language processing, not copied immutable bytes.
+assert records(invoke('#include "h"\n#include "h"\n',companions={'h':'2\n'}))==['literal 2 int 02000000']*2
+
 # Random independent portable DAG expansion, not reference fixture answers.
 rng = random.Random(412)
 defs = []; values = []

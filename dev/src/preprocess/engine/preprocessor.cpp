@@ -21,15 +21,17 @@ struct Identity {
 struct IdentityHash { std::size_t operator()(const Identity& v) const { return v.device*0x9e3779b97f4a7c15ULL ^ v.inode; } };
 // Structured adapter for a bounded directive operand. No lexical replay.
 class OperandSource : public PPSource {
-    const std::vector<PPItem>& items_; std::size_t index_=0; PPItem current_;
+    const std::vector<PPItem>& items_; std::size_t index_=0;
+    PPItem eof_;
+    const PPItem* current_=&eof_;
 public:
     explicit OperandSource(const std::vector<PPItem>& v):items_(v){}
-    Token next() override { if(index_<items_.size()) current_=items_[index_++]; else current_=PPItem(); return current_.token; }
-    const std::string& spelling() const override { return current_.text; }
-    const std::vector<LiteralElement>& literal_elements() const override { return current_.elements; }
-    std::size_t literal_end() const override { return current_.literal_end; }
-    std::size_t literal_physical_end() const override { return current_.physical_end; }
-    SourceLocation literal_suffix_location() const override { return current_.suffix_location; }
+    Token next() override { current_=index_<items_.size()?&items_[index_++]:&eof_; return current_->token; }
+    const std::string& spelling() const override { return current_->text; }
+    const std::vector<LiteralElement>& literal_elements() const override { return current_->elements; }
+    std::size_t literal_end() const override { return current_->literal_end; }
+    std::size_t literal_physical_end() const override { return current_->physical_end; }
+    SourceLocation literal_suffix_location() const override { return current_->suffix_location; }
 };
 std::string string_value(const PPItem& p, IdentifierTable& ids) {
     require(p.token.kind==TokenKind::string && !p.text.empty() && p.text[0]=='"',"expected ordinary string literal");
@@ -41,18 +43,22 @@ std::string string_value(const PPItem& p, IdentifierTable& ids) {
 struct Preprocessor::Impl {
     struct Conditional { bool parent, active, taken, seen_else; };
     struct File {
-        SourceBuffer buffer; Lexer lexer;
+        std::shared_ptr<const SourceBuffer> buffer; Lexer lexer;
         std::uint32_t name, source_id; std::int64_t line_delta=0;
         Identity identity;
         bool start=true, spaced=false;
         std::size_t conditional_base;
-        File(std::string bytes, IdentifierTable& ids, std::uint32_t n, Identity id, std::size_t base)
-            :buffer(std::move(bytes)),lexer(buffer,ids,options()),name(n),source_id(0),identity(id),conditional_base(base){}
+        File(std::shared_ptr<const SourceBuffer> source, IdentifierTable& ids, std::uint32_t n, Identity id, std::size_t base)
+            :buffer(std::move(source)),lexer(*buffer,ids,options()),name(n),source_id(0),identity(id),conditional_base(base){}
     };
     IdentifierTable& ids;
     PreprocessorMetrics metrics;
     MacroEngine macros;
     std::vector<std::string> names;
+    // Path lookup cache is TU-local. Sources are immutable for preprocessing;
+    // pragma-once hits reuse inode identity and never reopen/stat the path.
+    // IDs are interned paths, not scans of loaded sources.
+    std::vector<File*> path_sources;
     std::vector<std::unique_ptr<File>> sources;
     std::vector<File*> files;
     std::vector<Conditional> conditions;
@@ -89,16 +95,26 @@ struct Preprocessor::Impl {
     }
     MacroEngine::Builtin builtins() { return [this](PPItem& p){return builtin(p);}; }
     void include_file(const std::string& path,bool primary=false) {
+        IdentifierId path_id=ids.intern(path);
+        if(!primary && path_id<path_sources.size() && path_sources[path_id] && once.count(path_sources[path_id]->identity)) return;
         struct stat s; require(stat(path.c_str(),&s)==0,"missing source/include file");
         Identity id={static_cast<std::uint64_t>(s.st_dev),static_cast<std::uint64_t>(s.st_ino)};
         if(!primary && once.count(id)) return;
-        std::ifstream in(path,std::ios::binary); require(bool(in),"cannot open source/include");
-        std::ostringstream bytes; bytes<<in.rdbuf(); std::string data=bytes.str();
-        metrics.source_bytes+=data.size(); ++metrics.files;
+        std::shared_ptr<const SourceBuffer> buffer;
+        if(path_id<path_sources.size() && path_sources[path_id]) buffer=path_sources[path_id]->buffer;
+        else {
+            std::ifstream in(path,std::ios::binary); require(bool(in),"cannot open source/include");
+            std::ostringstream bytes; bytes<<in.rdbuf();
+            buffer=std::make_shared<const SourceBuffer>(bytes.str());
+            metrics.source_bytes+=buffer->bytes.size();
+        }
+        ++metrics.files;
         std::uint32_t name=names.size(); names.push_back(path);
-        sources.emplace_back(new File(std::move(data),ids,name,id,conditions.size()));
+        sources.emplace_back(new File(std::move(buffer),ids,name,id,conditions.size()));
         sources.back()->source_id=sources.size()-1;
         files.push_back(sources.back().get());
+        if(path_sources.size()<=path_id) path_sources.resize(path_id+1,nullptr);
+        path_sources[path_id]=sources.back().get();
     }
     PPItem read(File& f) {
         Token t=f.lexer.next(); ++metrics.source_tokens;
@@ -147,18 +163,19 @@ struct Preprocessor::Impl {
                 }
             }
         }
-        std::vector<PPItem> probes;
         for(std::size_t i=0;i<v.size();++i) {
-            if(v[i].text!="__has_cpp_attribute") {probes.push_back(v[i]); continue;}
+            if(v[i].text!="__has_cpp_attribute") continue;
+            const std::size_t begin=i;
             PPItem origin=v[i];
             require(++i<v.size() && punctuation(v[i],"("),"attribute probe requires (");
             std::string name;
             while(++i<v.size() && !punctuation(v[i],")")) name+=v[i].text;
             require(i<v.size(),"unterminated attribute probe");
             bool present=name=="no_unique_address" || name=="__no_unique_address__";
-            probes.push_back(macros.synthetic(present?"201803L":"0",origin));
+            v[begin]=macros.synthetic(present?"201803L":"0",origin);
+            v.erase(v.begin()+begin+1,v.begin()+i+1); i=begin;
         }
-        v=macros.expand(probes,builtins());
+        v=macros.expand_owned(std::move(v),builtins());
         OperandSource source(v); PostCursor cursor(source,ids,false,true);
         ControllingExpression expression(cursor,ids,query,this);
         PPValue value; bool valid=false;
@@ -172,11 +189,12 @@ struct Preprocessor::Impl {
         directive_ready=false;
         if(directive.empty()) return;
         const std::string command=directive[0].text;
-        std::vector<PPItem> v(directive.begin()+1,directive.end());
+        std::vector<PPItem> v=std::move(directive);
+        v.erase(v.begin());
         if(command=="if" || command=="ifdef" || command=="ifndef") {
             bool parent=active(), value=false;
             if(parent) {
-                if(command=="if") value=condition(v);
+                if(command=="if") value=condition(std::move(v));
                 else { require(v.size()==1 && v[0].token.kind==TokenKind::identifier,"invalid ifdef"); value=defined(v[0].token.identifier); if(command=="ifndef") value=!value; }
             }
             conditions.push_back({parent,parent && value,parent && value,false}); return;
@@ -187,7 +205,7 @@ struct Preprocessor::Impl {
             if(command=="endif") { if(c.parent) require(v.empty(),"extra endif tokens"); conditions.pop_back(); return; }
             require(!c.seen_else,"conditional after else");
             if(command=="else") { if(c.parent) require(v.empty(),"extra else tokens"); c.seen_else=true; c.active=c.parent && !c.taken; c.taken=true; }
-            else { c.active=c.parent && !c.taken && condition(v); c.taken=c.taken || c.active; }
+            else { c.active=c.parent && !c.taken && condition(std::move(v)); c.taken=c.taken || c.active; }
             return;
         }
         if(!active()) return;
@@ -196,19 +214,21 @@ struct Preprocessor::Impl {
         if(command=="error") throw std::runtime_error("active #error");
         if(command=="pragma") { pragma(v,files.back()->identity); return; }
         if(command=="include") {
-            v=macros.expand(v,builtins()); require(v.size()==1,"invalid include operand");
+            v=macros.expand_owned(std::move(v),builtins()); require(v.size()==1,"invalid include operand");
             std::string path;
             if(v[0].token.kind==TokenKind::header) path=v[0].text.substr(1,v[0].text.size()-2);
             else path=string_value(v[0],ids);
             const std::string& current=names[files.back()->name]; std::size_t slash=current.rfind('/');
             if(slash!=std::string::npos) {
                 std::string rel=current.substr(0,slash+1)+path;
+                IdentifierId id=ids.intern(rel);
+                if(id<path_sources.size() && path_sources[id] && once.count(path_sources[id]->identity)) return;
                 struct stat s; if(stat(rel.c_str(),&s)==0) {include_file(rel);return;}
             }
             include_file(path); return;
         }
         if(command=="line") {
-            v=macros.expand(v,builtins()); require(v.size()==1 || v.size()==2,"invalid line directive");
+            v=macros.expand_owned(std::move(v),builtins()); require(v.size()==1 || v.size()==2,"invalid line directive");
             OperandSource source(v); PostCursor cursor(source,ids); PostToken number=cursor.next();
             require(number.kind==PostKind::scalar && number.width<=8 && number.type!=FundamentalType::FT_FLOAT && number.type!=FundamentalType::FT_DOUBLE && number.type!=FundamentalType::FT_LONG_DOUBLE,"invalid line number");
             std::uint64_t n=0; for(std::size_t i=0;i<number.width;++i) n|=std::uint64_t(number.scalar[i])<<(8*i);
@@ -261,6 +281,6 @@ Token Preprocessor::next() {
     return current_.token;
 }
 const PreprocessorMetrics& Preprocessor::metrics() const {return impl_->metrics;}
-const SourceBuffer& Preprocessor::source_buffer(std::uint32_t id) const {return impl_->sources.at(id)->buffer;}
+const SourceBuffer& Preprocessor::source_buffer(std::uint32_t id) const {return *impl_->sources.at(id)->buffer;}
 const std::string& Preprocessor::file_name(std::uint32_t id) const {return impl_->names.at(id);}
 }
