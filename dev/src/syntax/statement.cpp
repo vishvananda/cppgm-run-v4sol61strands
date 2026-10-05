@@ -33,7 +33,7 @@ NodeId SyntaxParser::for_statement() {
             tree_.nodes[init].kind=SyntaxKind::RangeDeclaration; tree_.append(init,s); tree_.append(init,d); tree_.append(result,init);
             NodeId range=tree_.node(SyntaxKind::RangeInitializer);
             tree_.append(range,at(SimpleKind::OP_LBRACE) ? initializer() : expression()); tree_.append(result,range);
-            require(SimpleKind::OP_RPAREN); tree_.append(result,statement()); leave(); return result;
+            require(SimpleKind::OP_RPAREN); tree_.append(result,scoped_statement()); leave(); return result;
         }
         NodeId decl=tree_.node(SyntaxKind::SimpleDeclaration); tree_.append(decl,s);
         NodeId ds=tree_.node(SyntaxKind::InitDeclarators);
@@ -56,7 +56,7 @@ NodeId SyntaxParser::for_statement() {
     if (!at(SimpleKind::OP_SEMICOLON)) tree_.append(result,condition());
     require(SimpleKind::OP_SEMICOLON);
     if (!at(SimpleKind::OP_RPAREN)) { NodeId i=tree_.node(SyntaxKind::Iteration); tree_.append(i,expression()); tree_.append(result,i); }
-    require(SimpleKind::OP_RPAREN); tree_.append(result,statement()); leave(); return result;
+    require(SimpleKind::OP_RPAREN); tree_.append(result,scoped_statement()); leave(); return result;
 }
 NodeId SyntaxParser::try_statement() {
     NodeId result=tree_.node(SyntaxKind::Try); tree_.append(result,compound());
@@ -74,23 +74,26 @@ NodeId SyntaxParser::try_statement() {
     }
     return result;
 }
+NodeId SyntaxParser::scoped_statement() {
+    enter(); NodeId result=statement(); leave(); return result;
+}
 NodeId SyntaxParser::statement() {
     if (at(SimpleKind::OP_LBRACE)) return compound();
     if (eat(SimpleKind::KW_TRY)) return try_statement();
     if (eat(SimpleKind::KW_IF)) {
         enter(); NodeId result=tree_.node(SyntaxKind::If); require(SimpleKind::OP_LPAREN);
         tree_.append(result,condition()); require(SimpleKind::OP_RPAREN);
-        NodeId then=tree_.node(SyntaxKind::Then); tree_.append(then,statement()); tree_.append(result,then);
-        if (eat(SimpleKind::KW_ELSE)) { NodeId e=tree_.node(SyntaxKind::Else); tree_.append(e,statement()); tree_.append(result,e); }
+        NodeId then=tree_.node(SyntaxKind::Then); tree_.append(then,scoped_statement()); tree_.append(result,then);
+        if (eat(SimpleKind::KW_ELSE)) { NodeId e=tree_.node(SyntaxKind::Else); tree_.append(e,scoped_statement()); tree_.append(result,e); }
         leave(); return result;
     }
     if (at(SimpleKind::KW_WHILE) || at(SimpleKind::KW_SWITCH)) {
         auto t=take(); enter(); NodeId result=tree_.node(t.simple==SimpleKind::KW_WHILE ? SyntaxKind::While : SyntaxKind::Switch);
         require(SimpleKind::OP_LPAREN); tree_.append(result,condition()); require(SimpleKind::OP_RPAREN);
-        tree_.append(result,statement()); leave(); return result;
+        tree_.append(result,scoped_statement()); leave(); return result;
     }
     if (eat(SimpleKind::KW_DO)) {
-        NodeId result=tree_.node(SyntaxKind::Do); tree_.append(result,statement()); require(SimpleKind::KW_WHILE);
+        NodeId result=tree_.node(SyntaxKind::Do); tree_.append(result,scoped_statement()); require(SimpleKind::KW_WHILE);
         require(SimpleKind::OP_LPAREN); tree_.append(result,condition()); require(SimpleKind::OP_RPAREN); require(SimpleKind::OP_SEMICOLON); return result;
     }
     if (eat(SimpleKind::KW_FOR)) return for_statement();
@@ -116,6 +119,7 @@ NodeId SyntaxParser::statement() {
     if (peek().kind==PostKind::identifier && at(SimpleKind::OP_COLON,1)) {
         NodeId result=name(SyntaxKind::Label); take(); tree_.append(result,statement()); return result;
     }
+    if (type_start() && at(SimpleKind::OP_LPAREN,1)) return ambiguous_statement();
     if (type_start() || at(SimpleKind::KW_USING) || at(SimpleKind::KW_STATIC_ASSERT)) return declaration();
     NodeId result=tree_.node(SyntaxKind::ExpressionStatement);
     if (!at(SimpleKind::OP_SEMICOLON)) tree_.append(result,expression());

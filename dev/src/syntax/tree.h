@@ -18,8 +18,8 @@ using NodeId = std::uint32_t;
  X(InitDeclarators,"init-declarator-list") X(InitDeclarator,"init-declarator") \
  X(Initializer,"initializer") X(ParenInitializer,"paren-initializer") \
  X(BracedInit,"braced-init-list") X(TypeId,"type-id") X(TypeSpecifiers,"type-specifier-seq") \
- X(TypeSpecifier,"type-specifier") X(TypeName,"type-name") \
- X(Alias,"alias-declaration") X(StaticAssert,"static-assert-declaration") X(Message,"message") \
+ X(Decltype,"decltype-specifier") X(TypeSpecifier,"type-specifier") X(TypeName,"type-name") \
+ X(ClassForward,"class-forward-declaration") X(ClassKey,"class-key") X(Linkage,"linkage-specification") X(Alias,"alias-declaration") X(StaticAssert,"static-assert-declaration") X(Message,"message") \
  X(Compound,"compound-statement") X(ExpressionStatement,"expression-statement") \
  X(Return,"return-statement") X(Break,"break-statement") X(Continue,"continue-statement") \
  X(Goto,"goto-statement") X(Label,"labeled-statement") X(Case,"case-statement") \
@@ -39,8 +39,8 @@ using NodeId = std::uint32_t;
  X(Trait,"type-trait-expression") X(Throw,"throw-expression") \
  X(Conversion,"conversion-expression") X(Type,"type") \
  X(ExceptionSpecification,"exception-specification") X(ExceptionTypes,"type-id-list") \
- X(New,"new-expression") X(Delete,"delete-expression") X(GlobalScope,"global-scope") X(ArrayDelete,"array-delete") X(Placement,"placement") \
- X(Lambda,"lambda-expression") X(LambdaIntroducer,"lambda-introducer") X(LambdaDeclarator,"lambda-declarator") X(Mutable,"mutable") \
+ X(New,"new-expression") X(Delete,"delete-expression") X(GlobalScope,"global-scope") X(ArrayDelete,"array-delete") X(Placement,"placement") X(Capture,"capture") \
+ X(Lambda,"lambda-expression") X(LambdaIntroducer,"lambda-introducer") X(LambdaDeclarator,"lambda-declarator") X(Mutable,"lambda-specifier") X(Noexcept,"noexcept-specification") \
  X(FunctionTry,"function-try-block") X(Try,"try-block") X(Handler,"handler") X(ExceptionDeclaration,"exception-declaration") X(Ellipsis,"ellipsis") X(ThrowStatement,"throw-statement")
 
 enum class SyntaxKind : std::uint16_t {
@@ -55,6 +55,8 @@ struct SyntaxNode {
     SimpleKind token = SimpleKind::KW_AUTO;
     IdentifierId name = 0;
     std::uint32_t first = 0, last = 0, offset = 0, length = 0, literal = 0;
+    bool is_decltype = false, is_operator = false, operator_array = false, member_pointer = false, global_scope = false, has_parentheses = false;
+    SourceRange range = {0,0};
     SourceLocation location = {0,0,0};
 };
 struct SyntaxLiteral {
@@ -74,6 +76,7 @@ public:
     std::vector<SyntaxLiteral> literals;
     std::vector<char> spellings;
     std::vector<unsigned char> values;
+    SourceLocation anchor = {0,1,1};
     SyntaxTree();
     NodeId node(SyntaxKind, SourceLocation = {0,0,0});
     NodeId name(SyntaxKind, IdentifierId, SourceLocation = {0,0,0});
@@ -82,6 +85,7 @@ public:
     NodeId literal(const PostToken&);
     void append(NodeId parent, NodeId child);
     NodeId child(NodeId parent) const;
+    std::string compact(NodeId, const IdentifierTable&) const;
     void dump(std::ostream&, const IdentifierTable&, NodeId root) const;
 };
 int emit_ast(const std::string& output, const std::vector<std::string>& inputs, bool telemetry = false);
