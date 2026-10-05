@@ -25,6 +25,9 @@ class PostCursor {
 public:
     PostCursor(PPSource& lexer, IdentifierTable& identifiers, bool render_source = false, bool controlling = false)
         : lexer_(lexer), identifiers_(identifiers), render_source_(render_source), controlling_(controlling) {}
+    // Start a new bounded input sequence after its owner resets the PPSource.
+    // No token/lookahead survives; conversion buffers retain only capacity.
+    void reset() { ready_=false; after_operator_=false; pending_identifier_=0; }
     PostToken next();
     const PostMetrics& metrics() const { return metrics_; }
 };

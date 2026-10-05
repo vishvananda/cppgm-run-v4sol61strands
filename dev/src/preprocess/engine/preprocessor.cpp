@@ -4,7 +4,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <sys/stat.h>
-#include <unordered_set>
 #include <limits>
 
 namespace cppgm {
@@ -18,7 +17,40 @@ struct Identity {
     std::uint64_t device,inode;
     bool operator==(const Identity& b) const { return device==b.device && inode==b.inode; }
 };
-struct IdentityHash { std::size_t operator()(const Identity& v) const { return v.device*0x9e3779b97f4a7c15ULL ^ v.inode; } };
+// Flat inode set: no owning hash node per included header.
+class IdentitySet {
+    std::vector<Identity> keys_;
+    std::vector<std::uint32_t> slots_;
+    static std::size_t hash(const Identity& v) {
+        std::uint64_t h=v.device*0x9e3779b97f4a7c15ULL ^ v.inode;
+        h^=h>>33; h*=0xff51afd7ed558ccdULL; return h^(h>>33);
+    }
+    void grow() {
+        slots_.assign(slots_.empty()?64:slots_.size()*2,0);
+        for(std::size_t i=0;i<keys_.size();++i) {
+            std::size_t slot=hash(keys_[i])&(slots_.size()-1);
+            while(slots_[slot]) slot=(slot+1)&(slots_.size()-1);
+            slots_[slot]=i+1;
+        }
+    }
+public:
+    bool count(const Identity& key) const {
+        if(slots_.empty()) return false;
+        std::size_t slot=hash(key)&(slots_.size()-1);
+        while(slots_[slot]) {
+            if(keys_[slots_[slot]-1]==key) return true;
+            slot=(slot+1)&(slots_.size()-1);
+        }
+        return false;
+    }
+    void insert(const Identity& key) {
+        if(count(key)) return;
+        if(slots_.empty() || (keys_.size()+1)*4>slots_.size()*3) grow();
+        std::size_t slot=hash(key)&(slots_.size()-1);
+        while(slots_[slot]) slot=(slot+1)&(slots_.size()-1);
+        keys_.push_back(key); slots_[slot]=keys_.size();
+    }
+};
 void compact_attribute_probes(std::vector<PPItem>& v, MacroEngine& macros) {
     // Compact in place: each input item is visited/moved at most once.
     // Repeated vector erasure here would shift the remaining operand for
@@ -40,6 +72,13 @@ void compact_attribute_probes(std::vector<PPItem>& v, MacroEngine& macros) {
     }
     v.resize(write);
 }
+void record_expression(PreprocessorMetrics& metrics, const ExpressionMetrics& m) {
+    metrics.conditions=m.lines; metrics.expression_nodes=m.nodes;
+    metrics.expression_reductions=m.reductions;
+    metrics.expression_max_nodes=m.max_nodes; metrics.expression_max_stack=m.max_stack;
+    metrics.expression_parse_seconds=m.parse_seconds;
+    metrics.expression_evaluate_seconds=m.evaluate_seconds;
+}
 // Structured adapter for a bounded directive operand. No lexical replay.
 class OperandSource : public PPSource {
     const std::vector<PPItem>& items_; std::size_t index_=0;
@@ -47,6 +86,7 @@ class OperandSource : public PPSource {
     const PPItem* current_=&eof_;
 public:
     explicit OperandSource(const std::vector<PPItem>& v):items_(v){}
+    void reset() { index_=0; current_=&eof_; }
     Token next() override { current_=index_<items_.size()?&items_[index_++]:&eof_; return current_->token; }
     const std::string& spelling() const override { return current_->text; }
     const std::vector<LiteralElement>& literal_elements() const override { return current_->elements; }
@@ -75,6 +115,11 @@ struct Preprocessor::Impl {
     IdentifierTable& ids;
     PreprocessorMetrics metrics;
     MacroEngine macros;
+    // TU-local directive scratch; only capacities survive between expressions.
+    std::vector<PPItem> condition_items;
+    OperandSource condition_source;
+    PostCursor condition_cursor;
+    ControllingExpression condition_expression;
     std::vector<std::string> names;
     // Path lookup cache is TU-local. Sources are immutable for preprocessing;
     // pragma-once hits reuse inode identity and never reopen/stat the path.
@@ -88,7 +133,7 @@ struct Preprocessor::Impl {
     std::vector<SourceRecord> sources;
     std::vector<std::unique_ptr<File>> files;
     std::vector<Conditional> conditions;
-    std::unordered_set<Identity,IdentityHash> once;
+    IdentitySet once;
     MacroEngine::Rescan pending;
     std::vector<PPItem> directive;
     bool directive_ready=false;
@@ -97,8 +142,10 @@ struct Preprocessor::Impl {
     std::uint64_t counter=0;
     IdentifierId counter_id;
     std::size_t directive_end_line=0;
-    Impl(IdentifierTable& identifiers,const std::string& path,const std::string& d,const std::string& t)
-        : ids(identifiers),macros(ids,metrics),date(d),time(t) {
+    Impl(IdentifierTable& identifiers,const std::string& path,const std::string& d,const std::string& t,bool telemetry)
+        : ids(identifiers),macros(ids,metrics),condition_source(condition_items),
+          condition_cursor(condition_source,ids,false,true),
+          condition_expression(condition_cursor,ids,query,this,telemetry),date(d),time(t) {
         counter_id=ids.intern("__COUNTER__");
         file_id=ids.intern("__FILE__"); line_id=ids.intern("__LINE__"); pragma_id=ids.intern("_Pragma"); defined_id=ids.intern("defined");
         for (const auto& v : std::vector<std::pair<std::string,std::string>>{
@@ -192,11 +239,12 @@ struct Preprocessor::Impl {
             }
         }
         compact_attribute_probes(v,macros);
-        v=macros.expand_owned(std::move(v),builtins());
-        OperandSource source(v); PostCursor cursor(source,ids,false,true);
-        ControllingExpression expression(cursor,ids,query,this);
+        condition_items=macros.expand_owned(std::move(v),builtins());
+        condition_source.reset(); condition_cursor.reset(); condition_expression.restart();
         PPValue value; bool valid=false;
-        require(expression.next(value,valid) && valid,"invalid controlling expression");
+        require(condition_expression.next(value,valid) && valid,"invalid controlling expression");
+        record_expression(metrics,condition_expression.metrics());
+        condition_items.clear(); // Retain capacity, not the last operand's contents.
         return value.bits!=0;
     }
     void pragma(const std::vector<PPItem>& v, Identity identity) {
@@ -290,8 +338,8 @@ struct Preprocessor::Impl {
         return false;
     }
 };
-Preprocessor::Preprocessor(IdentifierTable& ids,const std::string& path,const std::string& date,const std::string& time)
-    : impl_(new Impl(ids,path,date,time)) {}
+Preprocessor::Preprocessor(IdentifierTable& ids,const std::string& path,const std::string& date,const std::string& time,bool telemetry)
+    : impl_(new Impl(ids,path,date,time,telemetry)) {}
 Preprocessor::~Preprocessor() {}
 Token Preprocessor::next() {
     if(!impl_->next(current_)) current_=PPItem();

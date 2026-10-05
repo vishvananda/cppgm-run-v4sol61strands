@@ -49,6 +49,9 @@ public:
         DefinedQuery defined, void* context = nullptr, bool telemetry = false);
     // Empty lines are skipped. false means EOF; invalid nonempty lines return
     // true with valid=false. Phase-1/2/3 exceptions are deliberately not caught.
+    // The directive owner has reset its cursor. Facts/operators are cleared by
+    // next(); retained contiguous scratch capacity never memoizes semantics.
+    void restart() { advance(); }
     bool next(PPValue& value, bool& valid);
     const ExpressionMetrics& metrics() const { return metrics_; }
 };

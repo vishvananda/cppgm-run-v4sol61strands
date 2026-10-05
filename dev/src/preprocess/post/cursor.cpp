@@ -80,6 +80,7 @@ void PostCursor::strings(PostToken& result) {
     Encoding selected = Encoding::ordinary;
     bool valid = true, first = true;
     ++metrics_.string_sequences;
+    bool physical_sequence = !current_.generated;
     do {
         const auto& s = lexer_.spelling();
         if (!first && render_source_) result.source += ' ';
@@ -100,7 +101,12 @@ void PostCursor::strings(PostToken& result) {
         const auto& part = lexer_.literal_elements();
         metrics_.literal_elements += part.size();
         elements.insert(elements.end(), part.begin(), part.end());
-        result.range.end = current_.range.end;
+        // A sequence may cross includes or expand from unrelated source ranges.
+        // Keep the first origin rather than manufacture a backwards/cross-file span.
+        physical_sequence = physical_sequence && !current_.generated &&
+            current_.location.file == result.location.file &&
+            current_.range.end >= result.range.end;
+        if (physical_sequence) result.range.end = current_.range.end;
         advance();
     } while (is_string(current_.kind));
     metrics_.max_sequence_elements = std::max(metrics_.max_sequence_elements, elements.size());
@@ -139,7 +145,8 @@ PostToken PostCursor::next() {
         lexer_.literal_end() == 2 && s.compare(0, 2, "\"\"") == 0) {
         pending_identifier_ = identifiers_.intern(s.substr(lexer_.literal_end()));
         pending_location_ = lexer_.literal_suffix_location();
-        pending_range_ = {pending_location_.offset, current_.range.end};
+        pending_range_ = current_.generated ? current_.range :
+            SourceRange{pending_location_.offset, current_.range.end};
         result.range.end = lexer_.literal_physical_end();
         result.kind = PostKind::array; result.type = type(encoding(s));
         result.width = width(encoding(s)); result.elements = 1;

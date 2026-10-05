@@ -73,7 +73,7 @@ observations=[]; parity={}
 for name,v in inputs.items():
     parity[name]={}
     for variant,cmd in variants.items():
-        output=run([*cmd,v['path']],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        output=run(['taskset','-c',str(cpu),*cmd,v['path']],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
         if variant in ['cursor','before_cursor']: ok=int(output.stdout)==v['expected']
         elif variant in ['gcc','clang']: ok=output.stdout.split()==['done']*v['expected']
         else:

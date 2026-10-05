@@ -9,6 +9,12 @@ void require(bool condition, const char* message) { if (!condition) throw std::r
 LexerOptions options() { LexerOptions o; o.collect_literal_elements = true; o.convert_empty_character = true; o.generated_token = true; return o; }
 bool hash(const PPItem& p) { return punctuation(p,"#") || punctuation(p,"%:"); }
 bool paste(const PPItem& p) { return punctuation(p,"##") || punctuation(p,"%:%:"); }
+void inherit_origin(PPItem& item, const PPItem& origin) {
+    item.file=origin.file; item.line=origin.line;
+    item.token.location=origin.token.location; item.token.range=origin.token.range;
+    item.token.generated=true;
+    item.physical_end=origin.token.range.end; item.suffix_location=origin.token.location;
+}
 }
 bool punctuation(const PPItem& p, const char* s) { return p.token.kind == TokenKind::punctuator && p.text == s; }
 PPItem capture(Lexer& l, Token t) {
@@ -90,8 +96,7 @@ PPItem MacroEngine::synthetic(const std::string& text, const PPItem& origin) {
     PPItem p = capture(lexer,t);
     Token end = lexer.next(); if (end.kind == TokenKind::newline) end = lexer.next();
     require(end.kind == TokenKind::eof, "paste does not form one preprocessing token");
-    p.token.location = origin.token.location; p.token.range = origin.token.range;
-    p.file = origin.file; p.line = origin.line; p.space = origin.space; p.paint = origin.paint;
+    inherit_origin(p,origin); p.space = origin.space; p.paint = origin.paint;
     return p;
 }
 void MacroEngine::define(const std::vector<PPItem>& v) {
@@ -211,10 +216,12 @@ void MacroEngine::substitute(const Macro& m, const PPItem& head, std::uint32_t r
     const std::uint32_t paint_id = add_paint(replacement_paint,m.name);
     const std::uint32_t parameter_paint = add_paint(head.paint,m.name);
     bool join = false;
+    // One bulk scratch buffer per substitution, not one allocation per token.
+    std::vector<PPItem> part;
     for (std::size_t i=0;i<m.replacement.size();++i) {
         const auto& r = m.replacement[i];
         if (paste(r.item)) { join = true; continue; }
-        std::vector<PPItem> part;
+        part.clear();
         if (m.function && hash(r.item)) {
             const auto& raw = args[m.replacement[++i].parameter];
             std::string s = "\"";
@@ -249,9 +256,7 @@ void MacroEngine::substitute(const Macro& m, const PPItem& head, std::uint32_t r
                 // (g(f)(g)(3)); its source location remains argument-owned.
                 p.paint=p.paint?0:parameter_paint;
             }
-            if (r.parameter<0) { p.file=head.file; p.line=head.line;
-                p.token.location=head.token.location; p.token.range=head.token.range;
-            }
+            if (r.parameter<0) inherit_origin(p,head);
         }
         if (!part.empty()) part.front().space = r.item.space;
         if (join) {
@@ -285,7 +290,8 @@ struct MacroEngine::Rescan::State {
         std::vector<Span> chunks;
         std::vector<PPItem> immediate;
         std::vector<PPItem> output;
-        std::unique_ptr<Invocation> invocation;
+        Invocation invocation;
+        bool invoking=false;
     };
     std::vector<Frame> frames;
     State() {frames.emplace_back();}
@@ -297,8 +303,8 @@ bool MacroEngine::next(PPItem& result, Rescan& rescan, const Pull& source, const
     using Invocation=Rescan::State::Invocation;
     for (;;) {
         auto& frame=frames.back();
-        if(frame.invocation) {
-            auto& job=*frame.invocation;
+        if(frame.invoking) {
+            auto& job=frame.invocation;
             const Macro& macro=definitions_[job.macro];
             if(job.next_parameter<macro.prescan_parameters.size()) {
                 std::size_t parameter=macro.prescan_parameters[job.next_parameter++];
@@ -310,7 +316,7 @@ bool MacroEngine::next(PPItem& result, Rescan& rescan, const Pull& source, const
             }
             std::vector<PPItem> replacement;
             substitute(macro,job.head,job.replacement_paint,job.raw,job.expanded,replacement);
-            frame.invocation.reset();
+            frame.invocation=Invocation(); frame.invoking=false;
             if(!replacement.empty()) {
                 auto seq=sequence(std::move(replacement));
                 metrics_.max_pending=std::max(metrics_.max_pending,seq->items.size());
@@ -341,7 +347,7 @@ bool MacroEngine::next(PPItem& result, Rescan& rescan, const Pull& source, const
         if(!pull(p)) {
             if(frames.size()==1) return false;
             auto output=std::move(frame.output);frames.pop_back();
-            auto& parent=*frames.back().invocation;
+            auto& parent=frames.back().invocation;
             parent.expanded[parent.current_parameter]=std::move(output);
             continue;
         }
@@ -362,15 +368,14 @@ bool MacroEngine::next(PPItem& result, Rescan& rescan, const Pull& source, const
             if(!macro.replacement.empty()) {
                 PPItem replacement=macro.replacement[0].item;
                 replacement.paint=add_paint(p.paint,id);
-                replacement.file=p.file;replacement.line=p.line;
-                replacement.token.location=p.token.location;replacement.token.range=p.token.range;replacement.space=p.space;
+                inherit_origin(replacement,p); replacement.space=p.space;
                 frame.immediate.push_back(std::move(replacement));
                 metrics_.max_pending=std::max(metrics_.max_pending,frame.immediate.size());
             }
             continue;
         }
-        std::unique_ptr<Invocation> job(new Invocation());
-        job->macro=macro_index; job->head=p;job->replacement_paint=p.paint;
+        Invocation job;
+        job.macro=macro_index; job.head=p;job.replacement_paint=p.paint;
         if(macro.function) {
             PPItem open;
             if(!pull(open)) {if(emit(std::move(p)))return true;continue;}
@@ -396,21 +401,25 @@ bool MacroEngine::next(PPItem& result, Rescan& rescan, const Pull& source, const
                 }
                 seq=sequence(std::move(raw));close=seq->items.size()-1;
             }
-            job->replacement_paint=intersect_paint(p.paint,seq->items[close].paint);
-            job->raw=arguments(macro,seq,start,close);
+            job.replacement_paint=intersect_paint(p.paint,seq->items[close].paint);
+            job.raw=arguments(macro,seq,start,close);
         } else if(painted(p.paint,id)) {p.blocked=true;if(emit(std::move(p)))return true;continue;}
         ++metrics_.invocations;
-        job->expanded.resize(job->raw.size());
-        frame.invocation=std::move(job);
+        job.expanded.resize(job.raw.size());
+        frame.invocation=std::move(job); frame.invoking=true;
     }
 }
 std::vector<PPItem> MacroEngine::expand_owned(std::vector<PPItem> input, const Builtin& builtin) {
-    Rescan rescan;
-    auto seq=sequence(std::move(input));
-    rescan.state_->frames[0].chunks.push_back({seq,0,seq->items.size()});
-    std::vector<PPItem> out; out.reserve(seq->items.size()); PPItem p;
-    Pull empty=[](PPItem&){return false;};
-    while(next(p,rescan,empty,builtin)) out.push_back(std::move(p));
+    // A directive operand is already an owned flat sequence. Stream it directly;
+    // only a demanded function invocation needs retained delimiter links.
+    // Avoid indexing/copying every ordinary controlling-expression token.
+    Rescan rescan; std::size_t index=0;
+    std::vector<PPItem> out; out.reserve(input.size()); PPItem p;
+    Pull pull=[&](PPItem& item) {
+        if(index==input.size()) return false;
+        item=std::move(input[index++]); return true;
+    };
+    while(next(p,rescan,pull,builtin)) out.push_back(std::move(p));
     return out;
 }
 std::vector<PPItem> MacroEngine::expand(const std::vector<PPItem>& input, const Builtin& builtin) {

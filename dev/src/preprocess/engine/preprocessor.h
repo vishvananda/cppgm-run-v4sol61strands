@@ -21,6 +21,9 @@ struct PreprocessorMetrics {
     std::size_t lookups = 0, max_pending = 0, files = 0;
     std::size_t paint_nodes = 0, paint_queries = 0, paint_cache_hits = 0;
     std::size_t indexed_tokens = 0, argument_spans = 0, max_tasks = 0;
+    std::size_t conditions = 0, expression_nodes = 0, expression_reductions = 0;
+    std::size_t expression_max_nodes = 0, expression_max_stack = 0;
+    double expression_parse_seconds = 0, expression_evaluate_seconds = 0;
 };
 // TU-local ownership, indexed definitions and persistent nesting paint.
 // No output dump is ever reparsed by the next production phase.
@@ -93,7 +96,7 @@ class Preprocessor : public PPSource {
     std::unique_ptr<Impl> impl_;
     PPItem current_;
 public:
-    Preprocessor(IdentifierTable&, const std::string& source, const std::string& date, const std::string& time);
+    Preprocessor(IdentifierTable&, const std::string& source, const std::string& date, const std::string& time, bool telemetry = false);
     ~Preprocessor();
     Token next() override;
     const std::string& spelling() const override { return current_.text; }

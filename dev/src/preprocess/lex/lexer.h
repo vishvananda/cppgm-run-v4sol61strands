@@ -33,6 +33,8 @@ struct Token {
     SourceRange range;
     SourceLocation location;
     IdentifierId identifier;
+    // Generated spellings are anchored to an invocation range, not byte-splittable.
+    bool generated;
 };
 
 struct IdentifierSpelling {

@@ -18,7 +18,7 @@ int main(int argc,char** argv) {
         out<<"preproc "<<argc-3<<'\n';
         for(int i=3;i<argc;++i) {
             auto start=std::chrono::steady_clock::now();
-            cppgm::IdentifierTable ids; cppgm::Preprocessor preprocessor(ids,argv[i],date,time);
+            cppgm::IdentifierTable ids; cppgm::Preprocessor preprocessor(ids,argv[i],date,time,std::getenv("CPPGM_METRICS")!=nullptr);
             cppgm::PostCursor tokens(preprocessor,ids,true);
             out<<"sof "<<argv[i]<<'\n';
             for (;;) {
@@ -30,7 +30,7 @@ int main(int argc,char** argv) {
             out<<"eof\n";
             if(std::getenv("CPPGM_METRICS")) {
                 const auto& m=preprocessor.metrics();
-                std::cerr<<"preproc bytes="<<m.source_bytes<<" source_tokens="<<m.source_tokens<<" expanded="<<m.expanded<<" invocations="<<m.invocations<<" argument_tokens="<<m.argument_tokens<<" pastes="<<m.paste_tokens<<" lookups="<<m.lookups<<" max_pending="<<m.max_pending<<" paint_nodes="<<m.paint_nodes<<" paint_queries="<<m.paint_queries<<" paint_cache_hits="<<m.paint_cache_hits<<" indexed_tokens="<<m.indexed_tokens<<" argument_spans="<<m.argument_spans<<" max_tasks="<<m.max_tasks<<" files="<<m.files<<" seconds="<<std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count()<<'\n';
+                std::cerr<<"preproc bytes="<<m.source_bytes<<" source_tokens="<<m.source_tokens<<" expanded="<<m.expanded<<" invocations="<<m.invocations<<" argument_tokens="<<m.argument_tokens<<" pastes="<<m.paste_tokens<<" lookups="<<m.lookups<<" max_pending="<<m.max_pending<<" paint_nodes="<<m.paint_nodes<<" paint_queries="<<m.paint_queries<<" paint_cache_hits="<<m.paint_cache_hits<<" indexed_tokens="<<m.indexed_tokens<<" argument_spans="<<m.argument_spans<<" max_tasks="<<m.max_tasks<<" files="<<m.files<<" conditions="<<m.conditions<<" expression_nodes="<<m.expression_nodes<<" expression_reductions="<<m.expression_reductions<<" expression_max_nodes="<<m.expression_max_nodes<<" expression_max_stack="<<m.expression_max_stack<<" expression_parse_seconds="<<m.expression_parse_seconds<<" expression_evaluate_seconds="<<m.expression_evaluate_seconds<<" seconds="<<std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count()<<'\n';
             }
         }
         if(!out) throw std::runtime_error("output write failed");
