@@ -5,43 +5,45 @@ namespace cppgm {
 struct PPValue { std::uint64_t bits; bool is_unsigned; };
 struct ExpressionMetrics {
     std::size_t lines = 0, nodes = 0, evaluated = 0, max_nodes = 0, max_stack = 0;
+    std::size_t reductions = 0, deferred_errors = 0;
     double parse_seconds = 0, evaluate_seconds = 0;
 };
 // Context and callback belong to the invoking preprocessor. PA3 supplies its
 // mock; PA4 can query its macro table by the same canonical identifier ID.
 using DefinedQuery = bool (*)(void*, IdentifierId);
 class ControllingExpression {
-    struct Node {
-        SimpleKind op;
-        std::size_t a, b, c;
-        std::uint64_t bits;
-        bool is_unsigned, leaf, unary;
+    // Every PA3 terminal is already a constant after token conversion/defined.
+    // Keep its typed value, source range and deferred domain error, not a dead
+    // tree for a second traversal. Lazy operators select which error survives.
+    struct Fact {
+        SourceRange range;
+        PPValue value;
+        bool valid;
     };
     struct Operator {
         SimpleKind op;
         unsigned precedence;
-        std::size_t base;
+        std::uint32_t base;
         bool unary;
+        std::size_t begin;
     };
-    struct Frame { std::size_t node; unsigned state; };
     PostCursor& cursor_;
     DefinedQuery defined_;
     void* context_;
     bool telemetry_;
     PostToken token_;
-    std::vector<Node> nodes_;
-    std::vector<std::size_t> values_;
+    std::vector<Fact> facts_;
     std::vector<Operator> operators_;
-    std::vector<Frame> frames_;
     ExpressionMetrics metrics_;
     IdentifierId true_, defined_id_;
     void advance();
-    void reduce();
-    void reduce_before(unsigned precedence);
-    void leaf(PPValue value);
-    PPValue literal() const;
-    void parse();
-    PPValue evaluate();
+    void push_operator(SimpleKind op, unsigned precedence, bool unary);
+    bool reduce();
+    bool reduce_before(unsigned precedence);
+    void leaf(PPValue value, SourceRange range);
+    bool literal(PPValue& value) const;
+    bool parse();
+    bool result(PPValue& value) const;
 public:
     ControllingExpression(PostCursor& cursor, IdentifierTable& identifiers,
         DefinedQuery defined, void* context = nullptr, bool telemetry = false);

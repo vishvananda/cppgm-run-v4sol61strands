@@ -30,3 +30,38 @@ hardware events or rejection gaps into passing performance evidence.
 
 See `pa3/performance.md` for accepted run evidence and comparison limitations.
 Personal controls do not replace the 20 course fixtures or independent audit.
+
+## Final independent audit controls
+
+```sh
+python3 student.tests/pa3/audit_check.py
+python3 student.tests/pa3/measure.py "$RALPH_ARTIFACT_DIR/pa3-perf" --label audit-handoff --against audit-before
+PA3_AUDIT_LABEL=audit-handoff python3 student.tests/pa3/audit_measure.py
+```
+
+`audit_check.py` builds 6,432 expression trees with an independent Python typed
+oracle (all operators, nested lazy/type interactions), excludes evaluated C++
+undefined arithmetic from portable evidence, checks GCC/Clang `#if` and reference
+agreement, and checks 39 explicit course/boundary/phase cases. Host warnings are
+retained in artifacts, not suppressed as correctness evidence. The inherited
+`check.py` separately qualifies native static assertions. Both support `PA3_TOOL`.
+
+The final parser uses compact typed constant facts and deferred domain-error
+bits, not a retained tree plus second evaluation walk. It still parses and checks
+all operands. Grammar/literal errors cannot be hidden by lazy selection. Every
+fact carries a physical source range, and expected rejection uses status returns.
+Metrics `nodes` count logical terminals/reductions, `max_nodes` counts live facts,
+`evaluated` counts valid arithmetic reductions (including harmless speculative
+constant work), and `deferred_errors` counts rejected reduction facts, not emitted
+errors. `max_stack` is operator-stack depth; constant finishing is `evaluate_us`.
+
+`audit_measure.py` uses the frozen `audit-before` and the selected final `audit-handoff` binaries;
+`PA3_AUDIT_LABEL` selects another previously frozen final label. Focused artifacts
+are under `pa3-audit/focused-<label>/`, preserving earlier runs. Portable triple
+expressions contain the same source text for hosts; full course triple remains a
+student/reference comparison because mock `defined` and course character types
+are not host semantics. Malformed host directives measure diagnostic recovery,
+not equivalent output. Three interleaved warm pinned PMU/time/RSS repeats include
+1x/3x chain scaling, slowest fixture and error recovery, separate `perf record`
+profiles, and branch/cache passes. Raw counts/spread and limitations are recorded
+in `pa3/audit.md` and the final appendix to `pa3/performance.md`.

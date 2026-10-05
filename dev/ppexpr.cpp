@@ -44,6 +44,7 @@ int main(int, char**) {
             std::cerr << "expr bytes=" << l.physical_bytes << " pp_tokens=" << l.tokens
                       << " lines=" << e.lines << " nodes=" << e.nodes << " evaluated=" << e.evaluated
                       << " max_nodes=" << e.max_nodes << " max_stack=" << e.max_stack
+                      << " reductions=" << e.reductions << " deferred_errors=" << e.deferred_errors
                       << " identifiers=" << identifiers.size() << " intern_probes=" << identifiers.probes()
                       << " read_us=" << std::chrono::duration_cast<std::chrono::microseconds>(loaded-start).count()
                       << " frontend_render_us=" << std::chrono::duration_cast<std::chrono::microseconds>(end-loaded).count()

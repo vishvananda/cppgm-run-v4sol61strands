@@ -291,6 +291,15 @@ Token Lexer::next() {
         }
         take(); return finish(TokenKind::header, start);
     }
+    // These terminals cannot start a longer token or literal. Classify them
+    // before Unicode identifier and literal-prefix probes, not after those
+    // impossible grammar alternatives. Phase1/2 still run through take().
+    switch (c) {
+    case '{': case '}': case '[': case ']': case '(': case ')':
+    case ';': case '?': case '~': case ',':
+        take(); return finish(TokenKind::punctuator, start);
+    default: break;
+    }
     // Test literal prefixes before identifier maximal munch. Never look through
     // a raw opening quote; its contents must not pass through phase1/2.
     // First-character dispatch avoids trying every prefix for every literal.
@@ -395,7 +404,6 @@ Token Lexer::next() {
         }
     }
     take();
-    bool single = c != 0 && c < 128 && std::strchr("{}[]();?~,", c);
-    return finish(single ? TokenKind::punctuator : TokenKind::other, start);
+    return finish(TokenKind::other, start);
 }
 } // namespace cppgm

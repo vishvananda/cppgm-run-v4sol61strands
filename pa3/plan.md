@@ -1,60 +1,86 @@
-# PA3 implementation / audit handoff
+# PA3 full-stage — final independent audit
 
-Stage base commit: `99a5fe4c45fac2edcaef92d5984d07a03cd676ba`.
-Last reviewed commit: `99a5fe4c45fac2edcaef92d5984d07a03cd676ba`.
-Entry markers preserved; implementation commits are not independent reviews.
+Stage base: `99a5fe4c45fac2edcaef92d5984d07a03cd676ba` (PA2 audit).
+Independently reviewed stage commits: `3c0beafa`, `e3d2ea6c`, `0d170da6`,
+`84bdd387`, plus the changes committed with this final audit. Entry markers are
+preserved here; implementation checkpoints were not acceptance reviews.
 
-## Design / spec alignment
-- `PostCursor::advance/next` owns one typed lookahead, preserves logical newline
-  in controlling mode, reuses PA2 literal conversion, keeps PP identifier IDs.
-  `Lexer::next` retains course PA1 word-punctuator rules (`new/delete` included).
-  No full-TU token vector, source reparse or debug-spelling semantic transport.
-- `ControllingExpression::parse/reduce` parses once using explicit precedence
-  stacks into a compact line-owned typed node arena. Parenthesis/conditional
-  stack boundaries reject malformed grammar even in unevaluated branches.
-- `ControllingExpression::literal/binary/evaluate` owns 64-bit promotion,
-  static conditional result types, iterative lazy evaluation, evaluated
-  division/mod/shift errors, signed div/rem and sign-preserving right shifts.
-  Unsigned bit storage avoids host signed-overflow UB; INT64_MIN/-1 is rejected.
-- `ControllingExpression::next` recovers expression errors at the logical line;
-  lexical exceptions remain fatal even after a line-local error. Arena/stack
-  capacity is reused then released at invocation end; no per-node allocations.
-- Data flow: immutable TU source -> shared streaming lexer/converter -> typed
-  nodes -> lazy value -> explicit renderer. O(bytes + tokens) work, O(largest
-  expression + interned names) auxiliary storage; geometrically growing dense
-  ID/slab intern table; no name lookup scales with TU size. Defined callback
-  accepts canonical ID/context for PA4 macro lookup. Later parser/templates,
-  lowering/backend concerns remain outside PA3, not simulated with shortcuts.
+## Final Spec Alignment / design
+Immutable source -> shared streaming `Lexer` -> one-lookahead typed `PostCursor`
+-> explicit precedence stacks of source-ranged constant facts -> value renderer.
+PA3 has no declarations/templates/LowIR/ELF; it does not manufacture downstream
+representations. Each logical expression is parsed once. PA2 types determine
+signed/unsigned 64-bit promotion; identifiers use canonical IDs. `defined` has
+an ID/context callback for the future macro table, not rendered-name lookup.
 
-## Validation / remaining groups
-Required PA3 20/20 (turn start 0/20); earlier PA1–2 80/80; through PA3 100/100;
-file audit 33 files. No fixtures/references/comparison rules changed.
-Personal controls explicitly rerun: PA1, PA2, PA2 independent audit, PA3;
-PA3 100k depth/chains, 1200 GCC/Clang-qualified native/PP cases, Clang-built
-implementation, ASan+UBSan all pass. Future backend qualification: both hosts,
-8/8 deliberate failures detected; no native/backend acceptance claimed.
+`ControllingExpression::parse/reduce` validates every operand's grammar/literal
+and reduces typed values immediately. Deferred arithmetic-domain validity is
+selected by lazy `&&`, `||`, `?:`; conditional signedness uses both arms. There
+is no retained node tree, second evaluation traversal, recursive native parser,
+full-TU token vector, text-semantic roundtrip or host/reference delegation.
+Storage/work is O(bytes + tokens + interned spellings), with stacks bounded by
+live expression nesting, not the total number of reduced operators. Error
+recovery drains only the current logical line; phase-1/2/3 exceptions remain
+fatal. Bulk vectors/slabs have explicit invocation owners and no hot per-node
+allocation. Full invariant evidence and capability coverage: [audit](audit.md).
 
-## Performance evidence
-Details/ranges/raw paths: [performance](performance.md). CPU 0 warmup + 3
-interleaved runs, frozen SHA256/flags, instructions/cycles/IPC and wall/user/
-system/RSS. `pa3-perf/signoff-*` has same-session baseline/host comparisons;
-`pa2-perf/pa3-signoff-*` preserves five inherited workloads including hosted.
-PA3 latency 0.13–0.47s medians, RSS 7.6–53.0 MiB; <=1.87x GCC instructions,
-<=2.60x GCC latency on these stage-supported diagnostic envelopes. Profiles
-attribute long-line/deep-nesting gaps to bounded lexer/conversion/typed graph
-work, not scans/reparses. Single-character dispatch reduces retired instructions
-1.4–12.5%; identifier latency remains inconclusive (overlapping spread).
-Inherited posttoken instructions 0.979–1.002x audited baseline, no growing cost;
-Clang semantic GCC-header rejection remains a documented capability gap.
-Generated-executable runtime/text size N/A: PA3 emits values. Mandatory PA33/34
-per-workload 1.25x GCC instruction gate preserved; early ratios do not waive it.
+## Findings and cohesive changes
+1. Expected syntax/domain rejection used C++ exceptions; malformed-line sampling
+   found exception unwinding dominant. Status returns and typed deferred-error
+   facts remove this cost without swallowing lexical/resource exceptions.
+2. Retaining a typed tree then evaluating it again made flat-chain memory grow
+   unnecessarily. Parse-time reduction discards dead facts, preserves source
+   ranges, grammar validation, both-arm types and lazy errors, and retains only
+   explicit compact stacks. A 900k-term chain has two live facts/one operator.
+3. Impossible identifier/literal-prefix probes preceded single punctuation.
+   `Lexer::next` now filters safe single terminals first, retaining phase
+   translation and multi-character maximal munch. Inherited controls rerun.
+4. Added independent typed oracle and frozen focused PMU/profile controls.
+   Telemetry distinguishes logical nodes, live facts, valid reductions and
+   deferred domain errors; earlier raw measurements remain intact.
 
-## Handoff ledger
-- Completed coherent group: all PA3 expression cursor, grammar/type, lazy integer
-  evaluation and line-error ownership, plus measured shared-terminal hot path.
-- Unfinished PA3 implementation: none known. Future PA4+ implementation remains.
-- Independent-audit questions (not waived): whole-stage grammar/literal/type
-  coverage, architecture/cost review beyond fixed fixtures, hosted capability
-  boundary and any undiscovered semantic edges. Ralph owns this review.
-- Handoff boundary: implemented and verified full PA3; do not advance into PA4
-  before Ralph's whole-stage audit/acceptance. Review markers remain unchanged.
+## Performance evidence / budgets
+Details, all medians/ranges, comparison limitations and raw paths:
+[performance](performance.md), final `audit-handoff` appendix. CPU 0, warmup +
+three interleaved same-session repeats, frozen inputs/binaries/flags/hosts,
+user-mode instructions/cycles/IPC, wall/user/system/RSS, separate branch/cache
+passes and `perf record` attribution. Raw files live under
+`/home/vishvananda/work/private/v4sol61strands/artifacts`.
+
+Final focused before -> after: malformed instructions 2237.869M -> 402.910M,
+wall 0.23 -> 0.05s; 900k chain RSS 120412 -> 5780 KiB, wall 0.32 -> 0.18s;
+full triple instructions 7368.594M -> 5785.189M. Full-triple wall ranges overlap
+(0.87–0.97 vs 0.68–1.10s): instruction/cycle benefit, not proven latency win.
+Final fixed PA3 instructions are 0.895–0.973x entry, 0.760–1.710x GCC. Nested
+cycles/latency regress versus entry despite lower instructions; final 0.32s
+median vs GCC 0.13s (2.46x) is bounded, profiled and disclosed, not GCC parity.
+Punctuation filtering improved that owning path versus its immediate precursor.
+No growing per-query cost, timeout-as-budget or numeric target reclassification.
+Inherited compiler controls remain measured on identical input. Host directives,
+PA2 lexical-vs-semantic work and course promotion differences are disclosed.
+Generated-program runtime/text/object size is N/A for token/value stages.
+Mandatory PA33/34 per-workload <=1.25x GCC instructions remains unchanged.
+
+## Validation
+Required: file audit **33 files PASS**; through-PA3 **100/100 PASS** (PA3 20,
+PA1–2 80). Personal PA1, PA2, independent PA2, PA3 and independent PA3 controls
+pass. Independent oracle: 6432 GCC/Clang/reference rows plus 39 interaction/
+boundary cases; inherited PA3 control: 1200 native/PP-qualified rows and 100k
+depth/chains. Clang implementation and ASan+UBSan pass both PA3 controls.
+Future backend host qualification passes; 8/8 deliberate failures detected.
+Stage PA3 native and instruction-gate controls correctly report N/A, not PASS.
+No fixtures, references, comparison rules or required coverage changed.
+Final rerun evidence and acceptance ledger are in `audit.md`.
+
+## Ledger / handoff
+- Completed: all PA3 syntax, typed promotion, lazy-domain handling, phase/line
+  ownership, inherited shared surfaces, independent architecture review and
+  performance investigation. Previous `84bdd387` handoffs (whole grammar/type,
+  ownership, inherited controls and PMU investigation) are resolved here.
+- Open PA3 defects / unaudited handoffs: none known after independent review.
+- Future assignment work: PA4+; macro-table callback, declarations/templates,
+  typed lowering/backend and their due budgets remain future work, not waived.
+  Clang rejection of a GCC-expanded hosted TU is preserved as a host-envelope
+  qualification gap, not claimed student hosted-C++ semantic support at PA3.
+- Ralph owns external reruns, acceptance and advancement; this is the model-owned
+  audit handoff, not a modification of Ralph goal/state files.

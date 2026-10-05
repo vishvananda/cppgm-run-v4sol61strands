@@ -1,7 +1,8 @@
 # PA3 measured evidence — October 4, 2026
 
-Implementation: `0d170da6` (measurement/control-only and documentation changes
-follow). Raw artifact root:
+Historical implementation for the original measurements: `0d170da6`. The final
+independent-audit appendix supersedes that design and signoff; earlier raw
+observations remain preserved. Raw artifact root:
 `/home/vishvananda/work/private/v4sol61strands/artifacts/`.
 
 ## Protocol and comparison boundary
@@ -137,3 +138,194 @@ implementation: none. Audit questions: broad capability/cost sufficiency,
 compact per-line graph and canonical identity ownership, inherited hosted
 coverage, and any undiscovered semantic edge cases. No review question is
 waived by these measurements or fixtures.
+
+## Final independent audit — October 5, 2026
+
+This appendix supersedes the implementation handoff conclusions, not its raw
+measurements. All experiments and binaries remain under the same artifact root.
+Final source is the audit commit with this appendix; the `audit-handoff` O3/g
+binaries include the final typed-fact algorithm, punctuation filter and metrics.
+
+Protocol: Xeon E5-2696 v4, CPU 0, one unmeasured warmup, three interleaved
+task-scoped repeats of `{instructions:u,cycles:u}` at identical affinity, input
+and environment. Raw perf files include time-running and running percentage.
+All primary and separate branch/cache groups ran 100%; no scaled or unavailable
+event is treated as zero. Flags, input/executable/host/cc1plus hashes, versions,
+commands, parity and every wall/user/system/RSS observation are in manifests.
+Use same-session pairs only. No compiler job ran alongside final measurements.
+
+### Fixed PA3 compiler workloads
+
+Raw: `pa3-perf/audit-handoff-{manifest,observations,summary,parity}.json` and
+`audit-handoff-*.{perf,time,telemetry}`. Input definitions remain in `measure.py`.
+Host #if envelopes contain identical expression text, verify every value and emit
+the same result lines; directive work is a disclosed difference. `cursor` checks
+an independently computed value checksum without rendering. Compiler and
+generated-executable costs are not conflated. Cells are median [min,max];
+instructions/cycles are millions, peak RSS is MiB. User/system are preserved raw.
+
+| Workload | Variant | Instructions M | Cycles M | IPC | Wall s | RSS MiB |
+|---|---|---:|---:|---:|---:|---:|
+| arithmetic | ppexpr | 2136.801 [2136.801,2136.801] | 929.624 [924.359,933.133] | 2.299 [2.290,2.312] | 0.260 [0.260,0.270] | 7.641 [7.617,7.648] |
+| arithmetic | ppexpr-baseline | 2276.146 [2276.146,2276.157] | 1010.130 [1003.134,1039.103] | 2.253 [2.191,2.269] | 0.280 [0.270,0.280] | 7.586 [7.570,7.645] |
+| arithmetic | cursor | 2008.349 [2008.349,2008.349] | 851.487 [850.032,868.959] | 2.359 [2.311,2.363] | 0.230 [0.230,0.270] | 7.641 [7.637,7.645] |
+| arithmetic | gcc | 2811.076 [2811.076,2811.076] | 1068.595 [1064.863,1083.630] | 2.631 [2.594,2.640] | 0.310 [0.310,0.330] | 26.480 [26.414,26.488] |
+| arithmetic | clang | 2811.819 [2808.949,2812.282] | 1064.633 [1045.788,1073.352] | 2.641 [2.620,2.686] | 0.320 [0.310,0.340] | 96.152 [96.055,96.172] |
+| arithmetic | reference | 2541.774 [2541.774,2541.774] | 1006.725 [1002.654,1008.951] | 2.525 [2.519,2.535] | 0.280 [0.270,0.310] | 7.668 [7.664,7.695] |
+| lazy | ppexpr | 3601.782 [3601.782,3602.497] | 1607.852 [1605.520,2228.074] | 2.240 [1.617,2.243] | 0.460 [0.440,0.640] | 11.320 [11.309,11.328] |
+| lazy | ppexpr-baseline | 3758.137 [3757.417,3758.151] | 1641.895 [1639.170,1653.048] | 2.289 [2.273,2.293] | 0.460 [0.450,0.460] | 11.332 [11.277,11.340] |
+| lazy | cursor | 3505.979 [3505.979,3505.979] | 1549.157 [1542.549,1554.669] | 2.263 [2.255,2.273] | 0.430 [0.420,0.490] | 11.316 [11.309,11.355] |
+| lazy | gcc | 2725.467 [2725.467,2725.468] | 921.538 [917.101,1810.777] | 2.958 [1.505,2.972] | 0.280 [0.260,0.520] | 27.156 [27.137,27.172] |
+| lazy | clang | 3156.535 [3156.494,3156.548] | 1235.162 [1206.326,1236.816] | 2.556 [2.552,2.617] | 0.390 [0.350,0.390] | 97.344 [97.262,97.363] |
+| lazy | reference | 4136.998 [4136.998,4138.438] | 1626.892 [1623.498,1638.131] | 2.543 [2.525,2.549] | 0.460 [0.450,0.480] | 11.367 [11.273,11.367] |
+| chain | ppexpr | 535.380 [535.380,535.380] | 213.205 [207.436,217.541] | 2.511 [2.461,2.581] | 0.060 [0.050,0.060] | 4.941 [4.922,5.004] |
+| chain | ppexpr-baseline | 584.270 [584.270,584.270] | 300.595 [286.809,303.748] | 1.944 [1.924,2.037] | 0.110 [0.100,0.120] | 52.922 [52.836,52.977] |
+| chain | cursor | 535.346 [535.346,535.346] | 212.533 [210.276,221.147] | 2.519 [2.421,2.546] | 0.060 [0.050,0.060] | 4.273 [4.270,4.273] |
+| chain | gcc | 313.167 [313.167,313.168] | 112.673 [112.574,115.889] | 2.779 [2.702,2.782] | 0.040 [0.040,0.040] | 30.559 [30.516,30.652] |
+| chain | clang | 335.525 [335.521,335.526] | 140.292 [140.027,140.364] | 2.392 [2.390,2.396] | 0.040 [0.040,0.040] | 76.035 [75.992,76.051] |
+| chain | reference | 715.689 [715.689,715.689] | 275.468 [274.206,276.664] | 2.598 [2.587,2.610] | 0.110 [0.110,0.110] | 50.305 [50.273,50.391] |
+| nested | ppexpr | 2049.524 [2049.524,2049.525] | 1093.385 [1045.621,1105.862] | 1.874 [1.853,1.960] | 0.320 [0.290,0.320] | 11.281 [11.180,11.312] |
+| nested | ppexpr-baseline | 2289.113 [2289.113,2289.114] | 956.532 [945.677,964.464] | 2.393 [2.373,2.421] | 0.270 [0.260,0.290] | 11.336 [11.332,11.340] |
+| nested | cursor | 2032.161 [2032.161,2032.161] | 1043.556 [1000.266,1060.344] | 1.947 [1.917,2.032] | 0.320 [0.300,0.330] | 11.324 [11.320,11.328] |
+| nested | gcc | 1602.847 [1602.847,1602.848] | 460.670 [460.424,462.231] | 3.479 [3.468,3.481] | 0.130 [0.130,0.140] | 16.172 [16.043,16.176] |
+| nested | clang | 1039.062 [1039.062,1039.065] | 409.433 [408.851,411.199] | 2.538 [2.527,2.541] | 0.130 [0.120,0.130] | 83.586 [83.574,83.648] |
+| nested | reference | 3461.212 [3461.212,3461.212] | 1148.660 [1145.447,1149.945] | 3.013 [3.010,3.022] | 0.320 [0.320,0.330] | 11.348 [11.289,11.367] |
+| identifiers | ppexpr | 2029.428 [2029.428,2029.435] | 904.729 [887.998,916.423] | 2.243 [2.215,2.285] | 0.260 [0.250,0.260] | 15.273 [14.688,15.273] |
+| identifiers | ppexpr-baseline | 2085.350 [2085.342,2085.360] | 923.291 [921.279,923.996] | 2.259 [2.257,2.264] | 0.260 [0.260,0.290] | 14.676 [14.602,15.215] |
+| identifiers | cursor | 1933.638 [1933.638,1933.653] | 850.401 [840.675,1248.966] | 2.274 [1.548,2.300] | 0.270 [0.230,0.350] | 15.266 [15.234,15.270] |
+| identifiers | gcc | 1478.316 [1478.315,1478.317] | 548.314 [544.565,551.168] | 2.696 [2.682,2.715] | 0.160 [0.160,0.180] | 33.344 [33.320,33.402] |
+| identifiers | clang | 2184.720 [2184.657,2184.915] | 889.666 [885.146,910.380] | 2.456 [2.400,2.468] | 0.280 [0.270,0.290] | 102.789 [102.762,102.816] |
+| identifiers | reference | 1891.640 [1891.640,1892.360] | 685.952 [684.265,699.288] | 2.758 [2.706,2.764] | 0.200 [0.190,0.200] | 11.258 [11.188,11.375] |
+
+Final / entry instruction ratios for arithmetic/lazy/chain/nested/identifiers:
+0.9388, 0.9584, 0.9163, 0.8953, 0.9732.
+Final / GCC ratios: 0.7601, 1.3215, 1.7096, 1.2787, 1.3728.
+Chain latency/RSS improve strongly; arithmetic cycles also improve. Lazy and
+identifier wall ranges overlap: do not claim statistically established latency
+benefit. Nested **regresses** relative to entry in cycles/latency despite fewer
+instructions (1.874 vs 2.393 IPC). Its 0.29–0.32s range vs GCC 0.13–0.14s is
+a bounded 2.46x median, not GCC parity. The `audit-final`, `audit-fold`,
+`audit-compact`, `audit-dispatch`, `audit-early-punct`, `audit-signoff`, and
+`audit-accepted` sessions preserve intermediate and confirmation results.
+Early punctuation filtering improved nested instructions 6.69% and cycles 13.54%
+against the immediately preceding build; final range variation does not establish
+a net entry-relative nested latency win. The source-faithful constant facts and
+status returns are retained for correctness/architecture plus chain/error benefit.
+
+### Slowest suite fixture, error recovery and growth
+
+`pa3-audit/fixture-times.json` independently times all 100 fixtures. The 12,039,435
+byte `300-triple.t` dominates (~0.74s initial scan); the next largest cost is
+PA2 concat (~0.024s), while startup dominates remaining milliseconds. Focused
+measurements below use `pa3-audit/focused-audit-handoff/`:
+`focused-{manifest,observations,summary}.json`, all raw `*.perf/*.time/*.stderr`,
+and frozen inputs/expected outputs. Full triple has course-specific mock-defined
+and character promotions, so no host-equivalent full-fixture result is claimed;
+portable triple excludes those cases and shifts and preserves source expression
+text. Malformed host #if diagnostic recovery is not equivalent output and exits
+nonzero; it is informational, not a claimed performance win over equivalent work.
+
+| Workload | Variant | Instructions M | Cycles M | IPC | Wall s | RSS MiB |
+|---|---|---:|---:|---:|---:|---:|
+| portable-triple | before | 1172.009 [1171.814,1172.051] | 519.157 [515.107,521.192] | 2.257 [2.249,2.275] | 0.160 [0.140,0.170] | 7.594 [7.586,7.641] |
+| portable-triple | after | 1111.352 [1111.352,1111.547] | 491.405 [480.370,497.972] | 2.262 [2.232,2.314] | 0.150 [0.140,0.160] | 7.645 [7.645,7.648] |
+| portable-triple | gcc | 1406.717 [1406.716,1406.718] | 517.975 [517.716,1099.212] | 2.716 [1.280,2.717] | 0.160 [0.160,0.330] | 18.238 [18.195,18.277] |
+| portable-triple | clang | 2207.982 [2207.982,2207.997] | 1016.499 [1013.309,1433.224] | 2.172 [1.541,2.179] | 0.730 [0.720,1.030] | 90.562 [90.504,90.652] |
+| portable-triple | reference | 1266.400 [1266.396,1266.403] | 587.704 [564.993,610.820] | 2.155 [2.073,2.241] | 0.190 [0.170,0.210] | 8.445 [8.418,8.492] |
+| invalid | before | 2237.869 [2237.569,2237.869] | 832.881 [822.403,844.075] | 2.687 [2.651,2.721] | 0.230 [0.220,0.230] | 4.227 [4.219,4.281] |
+| invalid | after | 402.910 [402.910,402.910] | 161.964 [161.612,166.058] | 2.488 [2.426,2.493] | 0.050 [0.040,0.060] | 4.270 [4.219,4.289] |
+| invalid | gcc | 5058.486 [5058.480,5058.486] | 2799.590 [2767.137,2857.617] | 1.807 [1.770,1.828] | 2.030 [2.030,2.100] | 14.777 [14.762,14.797] |
+| invalid | clang | 1000.160 [867.029,1366.951] | 399.492 [355.926,519.945] | 2.504 [2.436,2.629] | 0.120 [0.110,0.160] | 86.051 [86.047,86.086] |
+| invalid | reference | 504.248 [504.240,504.248] | 235.363 [234.526,236.703] | 2.142 [2.130,2.150] | 0.080 [0.080,0.080] | 8.449 [8.414,8.539] |
+| chain-1 | before | 584.244 [584.244,584.244] | 323.958 [285.065,352.804] | 1.803 [1.656,2.050] | 0.130 [0.130,0.130] | 52.973 [52.828,52.977] |
+| chain-1 | after | 535.352 [535.352,535.352] | 215.501 [212.615,223.759] | 2.484 [2.393,2.518] | 0.060 [0.060,0.070] | 4.277 [4.270,4.277] |
+| chain-1 | gcc | 313.170 [313.170,313.170] | 115.503 [113.940,115.748] | 2.711 [2.706,2.749] | 0.040 [0.040,0.050] | 30.613 [30.594,30.672] |
+| chain-1 | clang | 335.523 [335.523,335.526] | 152.278 [145.763,153.707] | 2.203 [2.183,2.302] | 0.050 [0.050,0.050] | 76.027 [75.984,76.039] |
+| chain-1 | reference | 820.023 [820.001,820.027] | 367.232 [361.067,367.252] | 2.233 [2.233,2.271] | 0.150 [0.150,0.160] | 50.145 [50.051,50.336] |
+| chain-3 | before | 1746.158 [1746.158,1746.159] | 835.781 [825.914,862.745] | 2.089 [2.024,2.114] | 0.320 [0.320,0.320] | 117.590 [117.180,117.652] |
+| chain-3 | after | 1601.575 [1601.575,1601.575] | 630.449 [619.635,635.359] | 2.540 [2.521,2.585] | 0.180 [0.170,0.180] | 5.645 [5.598,5.652] |
+| chain-3 | gcc | 908.289 [908.289,908.290] | 316.577 [316.298,319.499] | 2.869 [2.843,2.872] | 0.130 [0.120,0.130] | 69.070 [69.062,69.109] |
+| chain-3 | clang | 930.188 [930.186,930.196] | 356.076 [349.985,384.408] | 2.612 [2.420,2.658] | 0.110 [0.110,0.120] | 76.668 [76.668,76.699] |
+| chain-3 | reference | 2227.950 [2227.947,2227.960] | 894.581 [894.426,896.727] | 2.490 [2.485,2.491] | 0.370 [0.360,0.370] | 132.027 [132.020,132.031] |
+| full-triple | before | 7368.594 [7368.172,7368.595] | 3147.424 [3131.828,3156.358] | 2.341 [2.335,2.353] | 0.920 [0.870,0.970] | 18.715 [18.715,18.730] |
+| full-triple | after | 5785.189 [5785.188,5788.829] | 2433.816 [2429.400,3701.167] | 2.378 [1.563,2.381] | 0.740 [0.680,1.100] | 18.648 [18.641,18.703] |
+| full-triple | reference | 6084.624 [6084.603,6088.688] | 2493.908 [2487.425,2674.567] | 2.441 [2.275,2.446] | 0.780 [0.760,0.910] | 18.785 [18.738,18.836] |
+
+Chain scale 300k→900k: final instructions scale 2.992x,
+with two live facts and one operator at both sizes (source-buffer growth only).
+Telemetry `pa3-audit/chain-3-final-telemetry.txt`: 1,799,999 logical nodes,
+899,999 reductions, two live facts, one operator, no deferred domain errors.
+Full triple: 492,075 lines, 6,889,051 PP tokens, 3,116,475 logical nodes,
+1,640,250 reductions, max three facts/four operators; 170,712 deferred domain
+errors are typed reduction facts, not independently emitted diagnostics.
+
+### Attribution and branch/cache evidence
+
+All triggers have separate `perf record -e cycles:u -F 99 --call-graph
+dwarf,8192` profiles in `focused-audit-handoff/`; useful O3/g symbols and call
+stacks, zero lost samples. Short profiles have limited statistical resolution:
+percentages identify broad ownership, not sub-percent optimization claims.
+Profiles show invalid-entry unwinding (initial independent sample 73% in
+`__cxa_throw`/unwind path), removed by status returns; after-profile has no
+expression throw path. Chain after profile is lexer/cursor/conversion dominated,
+not tree evaluation or growth copies. Full triple after likewise belongs to
+phase-1/2 lexer, literal conversion and output, with no reparse/global scans.
+Nested profile attributes most work to Lexer/PostCursor/phase translation, plus
+bounded parser push/pop. Lazy profile likewise lexing/conversion; folded domain
+errors do not invoke trapping operations and no second evaluation walk remains.
+
+Separate 3-repeat branch/cache groups for chain-3 are preserved verbatim:
+`chain-3-{before,after}-{branch,cache}-{1,2,3}.perf`. CPU-specific cache events
+must not be interpreted as universal cache levels. Median/ranges:
+
+| Variant | branches | branch misses | cache references | cache misses |
+|---|---:|---:|---:|---:|
+| before | 335,617,390 [335,617,390,335,617,405] | 28,516 [28,401,29,140] | 5,677,293 [5,668,099,5,683,535] | 2,047,240 [2,039,490,2,050,025] |
+| after | 303,688,679 [303,688,678,303,688,687] | 16,136 [16,097,16,238] | 98,570 [98,440,98,646] | 7,007 [2,683,11,617] |
+
+### Inherited controls, same input hosts and output size
+
+`pa2-perf/pa3-audit-accepted-*` reruns all five inherited workloads against the
+independently audited PA2 baseline; `pa1-audit/pa3-audit-accepted-*` retains
+three PA1 sources, hosts/reference and audited `pa2-final-audit` binaries.
+PA1 first attempted the wrong baseline directory/label; that attempt failed
+before measurements (`pa1-inherited-accepted.log`), then the verified existing
+baseline was used (`pa1-inherited-retry.log`). Failed evidence is retained.
+
+| PA2 workload | posttoken I M | baseline I M | gcc semantic I M / wall s | gcc lexical I M / wall s | posttoken wall s / RSS MiB |
+|---|---:|---:|---:|---:|---:|
+| declarations | 4294.696 | 4408.375 | 9599.078 / 2.900 | 1714.967 / 0.220 | 0.580 / 15.258 |
+| raw | 1548.657 | 1559.896 | 1671.606 / 0.360 | 558.484 / 0.100 | 0.230 / 18.699 |
+| hosted | 3994.284 | 4114.812 | 11849.706 / 4.270 | 1603.603 / 0.190 | 0.560 / 14.574 |
+| literals | 2564.434 | 2617.913 | 3793.948 / 0.980 | 945.828 / 0.120 | 0.340 / 11.324 |
+| concat | 1240.873 | 1239.364 | 656.026 / 0.120 | 593.344 / 0.070 | 0.160 / 11.285 |
+
+PA2 posttoken / baseline instructions 0.971–1.001x; concat +0.12% is disclosed
+and wall ranges overlap, not evidence of a material regression. GCC full
+semantics and lexical hosts are separate columns because neither does exactly
+PA2 diagnostic conversion/rendering work. Clang rejects the GCC-expanded hosted
+TU semantically; `-E -P` accepts it and remains measured, not substituted for
+semantic support. This is a host header-envelope gap, not PA3 hosted semantics.
+Inherited disproportionate hosted/raw/concat workloads additionally sampled:
+`pa3-audit/inherited-{hosted,raw,concat}.data` and corresponding profiles/logs.
+Concat is ordinary-literal/take/encode work; hosted lexer/identifier/conversion;
+raw raw-literal scanning/UTF8 encoding. These remain linear with bounded cursor
+state; the owning punctuation dispatch was improved, not a timeout relaxed.
+
+PA1 final diagnostic instructions relative to baseline drop ~8.6–10.1%; full
+ranges, cycles/IPC/latency/RSS and same-input GCC/Clang are in its summary.
+All inherited required fixture output and independent controls remain passing.
+
+PA1–3 emit tokens/values, not ELF. Generated-executable runtime and emitted
+text/object size are **not applicable** to this stage; no backend measurement
+can be honestly attributed to PA3. Fixed loop/call/memory/FP/template/self-host
+backend sources and quality thresholds are unchanged. Host-native qualification
+through PA32 and 8/8 negative-control detections were rerun; PA3 native/PMU
+gate entrypoints explicitly report N/A, not PASS. PA33 and PA34 still require
+each fixed workload <=1.25x GCC user instructions at matching O2/O3, plus
+behavior/MIR/debug and whole-self runtime where due.
+
+No timeout is a performance budget. No prior numeric target was reclassified;
+all measurements, required behavior, fixtures, references and comparison rules
+are preserved. Final acceptance is stage-scoped architecture/correctness, not
+future GCC runtime or instruction-budget acceptance.
