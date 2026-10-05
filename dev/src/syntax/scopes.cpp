@@ -1,33 +1,53 @@
 #include "syntax/parser.h"
 namespace cppgm {
-SyntaxScopeId SyntaxParser::create_scope(SyntaxScopeId parent) {
-    SyntaxScopeId id=tree_.scopes.size(); tree_.scopes.emplace_back(); tree_.scopes[id].parent=parent; return id;
+SyntaxScopeId SyntaxParser::create_scope(SyntaxScopeId parent, bool namespace_scope) {
+    SyntaxScopeId id=tree_.scopes.size(); tree_.scopes.emplace_back();
+    auto& scope=tree_.scopes[id]; scope.parent=parent;
+    scope.nearest_namespace=namespace_scope ? id : tree_.scopes[parent].nearest_namespace;
+    scope.namespace_parent=tree_.scopes[parent].nearest_namespace;
+    scope.namespace_depth=tree_.scopes[parent].namespace_depth+(namespace_scope ? 1 : 0);
+    return id;
+}
+SyntaxScopeId SyntaxParser::common_namespace(SyntaxScopeId a, SyntaxScopeId b) const {
+    a=tree_.scopes[a].nearest_namespace; b=tree_.scopes[b].nearest_namespace;
+    while (a!=b) {
+        if (tree_.scopes[a].namespace_depth>=tree_.scopes[b].namespace_depth) a=tree_.scopes[a].namespace_parent;
+        else b=tree_.scopes[b].namespace_parent;
+    }
+    return a;
 }
 void SyntaxParser::import_scope(SyntaxScopeId owner, SyntaxScopeId target) {
     auto& env=tree_.scopes[owner];
     if (target && env.imported.insert(target).second) env.imports.push_back(target);
 }
-void SyntaxParser::enter() { enter(create_scope(active_.empty() ? 0 : active_.back())); }
+void SyntaxParser::enter() { enter(create_scope(active_.empty() ? 0 : active_.back(),active_.empty())); }
 void SyntaxParser::enter(SyntaxScopeId scope) { active_.push_back(scope); }
 void SyntaxParser::leave() { active_.pop_back(); }
 void SyntaxParser::bind(IdentifierId id, Category value, SyntaxScopeId target) {
     if (!id) return;
     auto& b=tree_.scopes[active_.back()].names[id];
     b.category=value; b.target=target;
-    if (value==Category::type || value==Category::templ || value==Category::space) b.qualifier=target;
+    if (value==Category::type || value==Category::templ || value==Category::space) { b.qualifier=target; b.qualifier_category=value; }
 }
-SyntaxBinding SyntaxParser::lookup(IdentifierId id, SyntaxScopeId scope, bool parents, bool qualifier) {
+SyntaxBinding SyntaxParser::lookup(IdentifierId id, SyntaxScopeId scope, bool parents, bool qualifier, bool namespace_only) {
     ++queries_;
     const auto serial=++lookup_serial_;
+    auto usable=[&](const SyntaxBinding& b) {
+        if (namespace_only) return b.qualifier_category==Category::space;
+        return !qualifier || b.qualifier_category!=Category::unknown;
+    };
+    auto selected=[&](SyntaxBinding b) {
+        if (qualifier || namespace_only) { b.target=b.qualifier; b.category=b.qualifier_category; }
+        return b;
+    };
+    // Only matches from nominated scopes are deferred. No per-query allocation
+    // or scan proportional to all TU scopes. Unqualified using-directives take
+    // effect at their nearest common namespace (C++11 7.3.4/2,4); qualified
+    // lookup instead searches the nominated namespace without lexical parents.
+    std::unordered_map<SyntaxScopeId,SyntaxBinding> pending;
     for (;scope;scope=parents ? tree_.scopes[scope].parent : 0) {
         auto direct=tree_.scopes[scope].names.find(id);
-        if (direct!=tree_.scopes[scope].names.end() && (!qualifier || direct->second.qualifier)) {
-            auto result=direct->second;
-            if (qualifier) result.target=result.qualifier;
-            return result;
-        }
-        // Visit only nominated scopes and their edges. The generation stamp is
-        // per environment, not a per-query TU-sized bitmap or cache.
+        if (direct!=tree_.scopes[scope].names.end() && usable(direct->second)) return selected(direct->second);
         std::vector<SyntaxScopeId> work;
         for (auto imported:tree_.scopes[scope].imports) work.push_back(imported);
         while (!work.empty()) {
@@ -35,13 +55,14 @@ SyntaxBinding SyntaxParser::lookup(IdentifierId id, SyntaxScopeId scope, bool pa
             if (env.visited==serial) continue;
             env.visited=serial;
             auto found=env.names.find(id);
-            if (found!=env.names.end() && (!qualifier || found->second.qualifier)) {
-                auto result=found->second;
-                if (qualifier) result.target=result.qualifier;
-                return result;
+            if (found!=env.names.end() && usable(found->second)) {
+                if (!parents) return selected(found->second);
+                pending.emplace(common_namespace(scope,next),found->second);
             }
             for (auto imported:env.imports) work.push_back(imported);
         }
+        auto found=pending.find(scope);
+        if (found!=pending.end()) return selected(found->second);
     }
     return {};
 }
@@ -82,13 +103,13 @@ NodeId SyntaxParser::namespace_declaration() {
     if (eat(SimpleKind::OP_ASS)) {
         if (!id || inlined) error("namespace alias name");
         tree_.nodes[result].kind=SyntaxKind::NamespaceAlias;
-        NodeId target=qualified(SyntaxKind::Target); tree_.append(result,target); require(SimpleKind::OP_SEMICOLON);
+        NodeId target=qualified(SyntaxKind::Target,true); tree_.append(result,target); require(SimpleKind::OP_SEMICOLON);
         bind(id,Category::space,tree_.nodes[target].resolved_scope); return result;
     }
     auto& names=tree_.scopes[active_.back()].names;
     auto old=names.find(id);
     SyntaxScopeId scope=old!=names.end() && old->second.category==Category::space ? old->second.target : 0;
-    if (!scope) scope=create_scope(active_.back());
+    if (!scope) scope=create_scope(active_.back(),true);
     bind(id,Category::space,scope); tree_.nodes[result].scope=scope;
     // An unnamed namespace is reopened through a reserved zero identifier.
     if (!id) tree_.scopes[active_.back()].names[0]={Category::space,scope,scope};
@@ -104,7 +125,7 @@ NodeId SyntaxParser::namespace_declaration() {
 NodeId SyntaxParser::using_declaration() {
     require(SimpleKind::KW_USING);
     if (eat(SimpleKind::KW_NAMESPACE)) {
-        NodeId result=tree_.node(SyntaxKind::UsingDirective), target=qualified(SyntaxKind::Target);
+        NodeId result=tree_.node(SyntaxKind::UsingDirective), target=qualified(SyntaxKind::Target,true);
         tree_.append(result,target); require(SimpleKind::OP_SEMICOLON);
         auto scope=tree_.nodes[target].resolved_scope;
         import_scope(active_.back(),scope);

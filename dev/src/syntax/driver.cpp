@@ -23,6 +23,7 @@ int emit_ast(const std::string& output, const std::vector<std::string>& inputs, 
             auto done=std::chrono::steady_clock::now();
             std::cerr << "syntax tokens=" << parser.tokens() << " nodes=" << tree.nodes.size()-1
                 << " edges=" << tree.edges.size()-1 << " category_queries=" << parser.queries()
+                << " scopes=" << tree.scopes.size()-1
                 << " max_lookahead=" << parser.max_lookahead()
                 << " parse_seconds=" << std::chrono::duration<double>(parsed-start).count()
                 << " dump_seconds=" << std::chrono::duration<double>(done-parsed).count() << '\n';

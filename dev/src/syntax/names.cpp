@@ -38,13 +38,13 @@ NodeId SyntaxParser::qualified_component(SyntaxKind kind) {
     } else result=name(kind);
     return result;
 }
-NodeId SyntaxParser::qualified(SyntaxKind kind) {
+NodeId SyntaxParser::qualified(SyntaxKind kind, bool namespace_only) {
     if (peek().kind==PostKind::identifier && lookahead_.front().name_node) {
         NodeId n=take().name_node; tree_.nodes[n].kind=kind; return n;
     }
-    return qualified_raw(kind);
+    return qualified_raw(kind,namespace_only);
 }
-NodeId SyntaxParser::qualified_raw(SyntaxKind kind) {
+NodeId SyntaxParser::qualified_raw(SyntaxKind kind, bool namespace_only) {
     bool global=eat(SimpleKind::OP_COLON2);
     SyntaxScopeId scope=global ? active_.front() : active_.back();
     NodeId result=qualified_component(kind), component=result;
@@ -53,7 +53,7 @@ NodeId SyntaxParser::qualified_raw(SyntaxKind kind) {
     while (true) {
         auto id=tree_.nodes[component].name;
         bool qualifier=at(SimpleKind::OP_COLON2);
-        auto binding=id ? lookup(id,scope,parents,qualifier) : SyntaxBinding{};
+        auto binding=id ? lookup(id,scope,parents,qualifier,namespace_only && !qualifier) : SyntaxBinding{};
         auto& node=tree_.nodes[result];
         node.terminal_name=id;
         node.category=binding.category==Category::unknown ? (id ? hint(id) : Category::value) : binding.category;

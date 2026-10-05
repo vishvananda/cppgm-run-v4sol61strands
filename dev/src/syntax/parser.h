@@ -14,10 +14,11 @@ class SyntaxParser {
     std::vector<Category> hints_;
     std::vector<SyntaxScopeId> active_;
     std::uint64_t lookup_serial_ = 0;
-    SyntaxScopeId create_scope(SyntaxScopeId);
+    SyntaxScopeId create_scope(SyntaxScopeId, bool namespace_scope=false);
+    SyntaxScopeId common_namespace(SyntaxScopeId, SyntaxScopeId) const;
     void import_scope(SyntaxScopeId, SyntaxScopeId);
     void enter(SyntaxScopeId);
-    SyntaxBinding lookup(IdentifierId, SyntaxScopeId, bool parents=true, bool qualifier=false);
+    SyntaxBinding lookup(IdentifierId, SyntaxScopeId, bool parents=true, bool qualifier=false, bool namespace_only=false);
     Category hint(IdentifierId);
     void bind(IdentifierId, Category, SyntaxScopeId target=0);
     void prepare_name(unsigned offset=0);
@@ -25,7 +26,7 @@ class SyntaxParser {
     NodeId using_declaration();
     NodeId enum_specifier();
     NodeId qualified_component(SyntaxKind);
-    NodeId qualified_raw(SyntaxKind);
+    NodeId qualified_raw(SyntaxKind, bool namespace_only=false);
     std::size_t tokens_=0, queries_=0, max_lookahead_=0;
     InputToken take();
     const PostToken& peek(unsigned offset=0);
@@ -42,7 +43,7 @@ class SyntaxParser {
     NodeId leaf(SyntaxKind, const PostToken&);
     NodeId raw(SyntaxKind, SimpleKind);
     NodeId name(SyntaxKind);
-    NodeId specs(bool type=false, bool force=false);
+    NodeId specs(bool type=false, bool force=false, NodeId result=0, bool has_type=false);
     NodeId declarator(bool abstract=false, bool allow_name=true, bool allocation=false);
     NodeId parameters();
     NodeId type_id(bool allocation=false, bool force=false);
@@ -66,7 +67,7 @@ class SyntaxParser {
     NodeId for_statement();
     NodeId ambiguous_statement();
     NodeId suffixes(NodeId, bool allocation=false);
-    NodeId qualified(SyntaxKind);
+    NodeId qualified(SyntaxKind, bool namespace_only=false);
     NodeId try_statement();
     IdentifierId declared_name(NodeId) const;
     bool function_declarator(NodeId) const;

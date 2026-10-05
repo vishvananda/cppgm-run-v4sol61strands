@@ -48,6 +48,7 @@ bool SyntaxParser::type_start(unsigned offset) {
     const auto& t=peek(offset);
     if (t.kind==PostKind::simple) return specifier(t.simple) || t.simple==SimpleKind::KW_TYPENAME || t.simple==SimpleKind::KW_DECLTYPE || t.simple==SimpleKind::KW_CLASS || t.simple==SimpleKind::KW_STRUCT || t.simple==SimpleKind::KW_UNION || t.simple==SimpleKind::KW_ENUM;
     if (t.kind==PostKind::identifier) {
+        if (lookahead_[offset].name_node && tree_.nodes[lookahead_[offset].name_node].member_pointer) return false;
         Category c=lookahead_[offset].name_node ? tree_.nodes[lookahead_[offset].name_node].category : category(t.identifier); return c==Category::type || c==Category::templ;
     }
     return false;
@@ -65,9 +66,8 @@ NodeId SyntaxParser::name(SyntaxKind kind) {
     if (token.name_node) { tree_.nodes[token.name_node].kind=kind; return token.name_node; }
     return leaf(kind,token);
 }
-NodeId SyntaxParser::specs(bool type, bool force) {
-    NodeId result=tree_.node(type ? SyntaxKind::TypeSpecifiers : SyntaxKind::DeclSpecifiers);
-    bool has_type=false;
+NodeId SyntaxParser::specs(bool type, bool force, NodeId result, bool has_type) {
+    if (!result) result=tree_.node(type ? SyntaxKind::TypeSpecifiers : SyntaxKind::DeclSpecifiers);
     while (true) {
         prepare_name();
         const auto t=peek();
@@ -222,7 +222,7 @@ NodeId SyntaxParser::declaration() {
         if (eat(SimpleKind::OP_SEMICOLON)) return e;
         // The common declaration path also handles enum object declarators.
         NodeId s=tree_.node(SyntaxKind::DeclSpecifiers); tree_.append(s,e);
-        return declaration_tail(s,false);
+        return declaration_tail(specs(false,false,s,true),false);
     }
     attributes();
     if (eat(SimpleKind::OP_SEMICOLON)) return tree_.node(SyntaxKind::EmptyDeclaration);
@@ -269,7 +269,7 @@ NodeId SyntaxParser::declaration_tail(NodeId spec, bool typedef_decl) {
     NodeId init_list=0;
     while (true) {
         enter(); // parameters' scope extends through this function's body, not sibling declarations
-        NodeId d=declarator(); IdentifierId id=declared_name(d);
+        NodeId d=declarator(); tree_.nodes[d].scope=active_.back(); IdentifierId id=declared_name(d);
         if (!id) {
             bool operator_name=false;
             for (auto e=tree_.nodes[d].first;e;e=tree_.edges[e].next) operator_name |= tree_.nodes[tree_.edges[e].child].is_operator || tree_.nodes[tree_.edges[e].child].operator_literal || tree_.nodes[tree_.edges[e].child].operator_conversion;
@@ -298,7 +298,7 @@ NodeId SyntaxParser::declaration_tail(NodeId spec, bool typedef_decl) {
 }
 NodeId SyntaxParser::parse() {
     tree_.anchor=peek().location;
-    NodeId root=tree_.node(SyntaxKind::TranslationUnit);
+    NodeId root=tree_.node(SyntaxKind::TranslationUnit); tree_.nodes[root].scope=active_.back();
     while (peek().kind!=PostKind::eof) tree_.append(root,declaration());
     return root;
 }

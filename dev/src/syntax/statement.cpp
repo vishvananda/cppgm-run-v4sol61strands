@@ -1,7 +1,7 @@
 #include "syntax/parser.h"
 namespace cppgm {
 NodeId SyntaxParser::compound() {
-    require(SimpleKind::OP_LBRACE); enter(); NodeId result=tree_.node(SyntaxKind::Compound);
+    require(SimpleKind::OP_LBRACE); enter(); NodeId result=tree_.node(SyntaxKind::Compound); tree_.nodes[result].scope=active_.back();
     while (!at(SimpleKind::OP_RBRACE)) {
         if (peek().kind==PostKind::eof) error("closing brace");
         tree_.append(result,statement());

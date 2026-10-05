@@ -12,6 +12,9 @@ cases={
  'inline':'namespace lib { inline namespace abi { using word=int; } } lib::word x;',
  'unnamed':'namespace lib { namespace { typedef int word; } namespace { word x; } word y; }',
  'using_transitive':'namespace a { typedef int word; } namespace b { using namespace a; } namespace c { using namespace b; word x; }',
+ 'using_common_ancestor':'namespace source{int word=1;} namespace owner{using word=int; namespace inner{using namespace source; word x;} void f(){using namespace source; word y;}}',
+ 'using_transitive_ancestor':'namespace source{int word=1;} namespace transit{using namespace source;} namespace owner{using word=int; namespace inner{using namespace transit; word x;}}',
+ 'using_namespace_only':'namespace a{using word=int;} void f(){int a=1; using namespace a; word x=a;}',
  'using_cycle':'namespace a { typedef int word; } namespace b { using namespace a; } namespace a { using namespace b; } void f(){ using namespace b; word x; }',
  'using_shadow':'namespace a { typedef int word; } void f(){ using a::word; word x; { int word=1; word*=2; } word y; }',
  'qualified_value':'namespace Values { int fetch(int x){ return x; } } int f(){ return sizeof(Values::fetch(1)); }',
@@ -21,6 +24,8 @@ cases={
  'enum_shadow':'enum class lower { off, on=1 }; int f(int lower){ return int(lower::on)+lower; }',
  'unscoped_enum':'enum lower { a,b=a+1,c=b+1, }; int f(){ return lower::c+b; }',
  'enum_objects':'enum lower { a,b }; enum lower first=a, *ptr=&first; typedef enum { c,d=c+1 } other; other second=d;',
+ 'enum_cv':'enum lower { a } const x=a; enum class upper { b } const y=upper::b;',
+ 'paren_qualified':'namespace a { using word=int; } int f(){ return (a::word(1))+(a::word()); }',
  'enum_opaque':'enum class lower: unsigned; enum class lower: unsigned { a }; lower f(){ return lower::a; }',
  'global':'namespace a { using word=int; } namespace b { using word=double; ::a::word f(::a::word x){ return x; } }',
  'namespace_siblings':'namespace a { using word=int; } namespace b { int word=1; int f(){ return word<2; } } a::word x;',
@@ -50,4 +55,4 @@ with tempfile.TemporaryDirectory() as d:
  for name,s in {'namespace_close':'namespace a { int x;','enum_initializer':'enum lower { a= };','enum_comma':'enum lower { a,,b };','empty_enum_forward':'enum;','using_missing':'using namespace ;','alias_missing':'namespace a=;'}.items():
   p=d/(name+'.cpp');p.write_text(s)
   assert subprocess.run([T,'--emit-ast','-o',d/'bad.ast',p],capture_output=True).returncode!=0,name
-print('PA5 namespace/enum controls passed: portable integration + 18 families + 6 rejections')
+print('PA5 namespace/enum controls passed: portable integration + 23 families + 6 rejections')

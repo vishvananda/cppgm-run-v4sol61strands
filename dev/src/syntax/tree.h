@@ -13,11 +13,13 @@ struct SyntaxBinding {
     SyntaxScopeId target = 0;
     // Qualifier lookup ignores ordinary values (C++11 3.4.3).
     SyntaxScopeId qualifier = 0;
+    SyntaxCategory qualifier_category = SyntaxCategory::unknown;
     SyntaxBinding() = default;
-    SyntaxBinding(SyntaxCategory c, SyntaxScopeId t, SyntaxScopeId q) : category(c), target(t), qualifier(q) {}
+    SyntaxBinding(SyntaxCategory c, SyntaxScopeId t, SyntaxScopeId q) : category(c), target(t), qualifier(q), qualifier_category(c) {}
 };
 struct SyntaxScope {
-    SyntaxScopeId parent = 0;
+    SyntaxScopeId parent = 0, nearest_namespace = 0, namespace_parent = 0;
+    unsigned namespace_depth = 0;
     std::unordered_map<IdentifierId,SyntaxBinding> names;
     std::vector<SyntaxScopeId> imports;
     std::unordered_set<SyntaxScopeId> imported;
