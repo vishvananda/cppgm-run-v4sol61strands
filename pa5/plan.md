@@ -1,93 +1,104 @@
-# PA5 compact implementation plan
+# PA5 compact implementation and final-audit plan
 
 Stage base commit: 08275a628da86ffd921633806a3f9ca72fcaaaeb
-Last reviewed commit: 615f033c0a6c4fd106edc7b922173196397a48a3
+Last reviewed commit: 6e277374e823970a07b052fd9201beab4db0f82d
 
-## Current implementation boundary (loop 13, 2026-10-05)
-Turn-entry HEAD: `3d2ef351ddff358b85a2b24ab4ea9efa8fe748fa`.
-The existing stage/review markers above are preserved. Audit 12's whole-range
-review and historical measurements remain in `pa5/audit.md`; this implementation
-handoff does not update its independent-review marker or certify acceptance.
-Unchanged PA5: **188/188**, up from 115/188 (all 73 inherited failures resolved).
-PA1–PA4: **205/205**; through PA5: **393/393**; file audit: **50 files, pass**.
-No fixture, reference, grammar, harness, coverage or comparison rule changed.
+## Final boundary — audit 14, October 5, 2026
 
-## Design / spec alignment and completed ownership group
-Owner: `dev/src/syntax`, especially templates/names/scopes/classes/parser;
-TU-owned node/edge/literal/scope arenas feed an explicit deterministic AST view.
-Data flow: PA1–PA4 streaming tokens/source identity -> indexed syntax categories
-and structured clauses/arguments/declarators -> retained graph -> dump view.
-Known declarations override lexical hints; categories are not canonical types,
-overload results, deduction or instantiated semantics (owned by later PAs).
+Entry HEAD: `112d17ee4c6dbdbb69cf3969786c7185475553c7`.
+Independent review reconstructed the complete stage from spec, assignment,
+grammar, every stage commit and combined source; the checkpoint conclusions
+were not used as a substitute. Code review covers base exclusive through the
+reviewed commit inclusive. Previous reviewed marker `615f033c` and checkpoint
+12 remain preserved in `pa5/audit.md`; loop 13 evidence remains unchanged.
 
-Loop 13 implements type/non-type/template-template parameters, packs/defaults,
-specializations/instantiations, operator/literal-operator template IDs, dependent
-qualified/member/typename syntax, conversions and integrated class completion.
-Parameter environments are retained but do not leak on publication; explicit
-instantiation does not overwrite template categories. Delimiter-aware logical
-angle splitting retains token identity and preserves expression shifts.
-Mixed initializer/declarator prefixes are factored once, retaining typed graph
-wrappers rather than abandoning nodes. Deferred region parsing always restores
-scope/input/angle context on rejection; incomplete templates are not published.
+Full-stage PA5 syntax is implemented and independently reviewed. Course tests,
+references, grammar, harness, coverage and comparison rules are unchanged:
+PA5 **188/188**, PA1–PA4 **205/205**, through PA5 **393/393**; file audit
+**50 files, pass**. Stage advancement belongs to Ralph, not this ledger.
 
-Complexity: bounded lookahead (observed <=4), one parse per source region,
-amortized arena/index growth and actual visited scope/base/import edges; no
-rendered lookup keys, whole-TU token vector/scans, semantic tree copy or replay.
-Class-completion buffers only the regions whose syntax needs completion.
-Later semantics must consume the graph directly; PA24/26 representations should
-retain compact canonical IDs/demand indexes/typed lowering, not syntax text.
+## Final design / Spec Alignment
 
-## Validation / performance evidence
-Full frozen hashes, host tables, ranges, runtime/size distinctions and artifact
-paths: `student.tests/pa5/loop13-evidence.md` and `$RALPH_ARTIFACT_DIR/pa5/loop13/`.
-Portable integrations and ordinary 13/scope 23/class 30/template 32 families pass
-GCC/Clang qualification and exact reference-supported AST comparisons. Each
-group retains six grammar rejections; driver/TU reset controls pass. Eleven
-inherited capability probes pass; dependent conversion remains a documented
-reference gap, independently qualified/graph-checked, not a reference revision.
+Owner: `dev/src/syntax`. Immutable source/identifier IDs and PA1–PA4 streaming
+preprocessor/posttoken cursor feed one TU-owned structured node/edge/literal/
+scope graph. Indexed syntax categories guide grammar choices; they are not
+canonical semantic types, deduction, overload results or instantiated bodies.
+The deterministic AST text is an explicit output view, never phase transport.
 
-ASan/UBSan: all 188 fixture invocations, integrations/families, 211 prefixes and
-three explicit deferred-context reducers pass. O2 and sanitized retained-graph
-controls pass; 181 successful fixture trees + 32 template families have single
-node ownership. Flat index: 171,529 keys. Amplified template graph 2k->20k:
-532,299->5,320,299 tokens; 616,342->6,160,342 nodes;
-214,092->2,140,092 queries; lookahead 3.
+Ordinary declarations/expressions/statements, namespaces/enums/using,
+classes/bases/member/special/complete-class contexts and template/dependent
+syntax share declarators, qualified names and single-parse ambiguity factoring.
+Templates retain parameter environments and structured clauses/arguments,
+including packs/defaults/template-template parameters, specialization and
+explicit-instantiation syntax. Only entity categories are published; parameters
+do not leak or overwrite template categories. Delimiter-aware logical angle
+splitting preserves expression shifts and source identity.
 
-Final code binary SHA256 `279689986eb4f293bfc26cbe8a546fddc3d160f5efb29668f1b8ba1209043c72`.
-CPU0 Xeon E5-2696 v4; warmup then three interleaved grouped user-mode PMU runs,
-100% running; separate branch/cache triples and symbolized profiles. Large
-student/GCC compiler instruction ratios: ordinary 1.059x, scopes 1.240x,
-classes 0.246x, templates 0.707x, 60k parameters 1.606x. All 2k->20k work is
-approximately linear. Template medians: 27.172G instructions, 13.744G cycles,
-IPC 1.977, wall 6.30s (5.77–6.52), RSS 1,181,608 KiB. Isolated class/parameter
-repeats preserve initial overlapping observations and resolve focused timing;
-small/startup-scale latency claims remain inconclusive where spread dominates.
-Parameter factor and arena RSS are disclosed/profiled; no growing scan factor.
-Historical numbers/targets remain recorded, not reclassified or waived.
+Complete-class deferral stores compact tokens only for required regions, parses
+that grammar once, restores input/scope/angle state on rejection and releases
+region storage. Qualified out-of-class member templates use immutable shared
+name-index overlays, not binding copies or mutation of published scope chains.
+Sticky compact TU-local grammar failure renders only at the driver boundary.
+Arenas grow geometrically; IDs/non-owning edges avoid per-node ownership and
+recursive destruction. Lookahead observed 2–3, controls enforce the established
+≤4 bound. Work tracks consumed tokens, produced nodes and actual scope edges;
+no TU scan per name, tree copy, textual lookup key or global retry.
 
-PA5 emits no executable/native object/LowIR: generated runtime/text/object size
-unavailable, not passed. Compiler text/data/bss: 425,056/4,128/1,568 bytes.
-PA33/PA34's per-workload <=1.25x GCC executable-instruction gate remains
-mandatory; diagnostic PA5 compiler ratios do not substitute for that gate.
+## Audit findings and completed changes
 
-## Handoff ledger: separate implementation and independent review
-- Completed: cohesive template/dependent group plus cross-family correctness,
-  ownership, rejection and cost controls; commits `d59b9532` and `ef9d937d`.
-  The final evidence/control commit accompanies this ledger. This is the
-  full-fixture implementation handoff to Ralph, not stage advancement.
-- Unfinished implementation/capability work: vendor hosted extensions/builtin
-  transforms/traits, `__type_pack_element`, `unsigned __int128`, `_Float32`;
-  raw/normalized same-source host gaps are classified in `reference-notes.md`.
-  These are not portable passing benchmarks or required C++11 fixture gaps.
-  Broad arena peak-memory/cursor tuning remains possible, with all costs kept.
-  Further extension work needs an explicit extension vocabulary/AST contract,
-  rather than claiming compiler agreement supplies the course grammar.
-- Independent audit questions (not waived): whole-stage grammar/category
-  coverage beyond fixtures; deep mixed/dependent syntax and retained factored
-  graph consumption by PA6/7; architecture/large-hosted cost review. Audit must
-  distinguish supported C++11 from vendor builtin capability and assess the
-  disclosed parameter constant-factor/RSS costs. No known required fixture
-  failure or required-stage correctness defect remains open at this boundary.
-- Later assignment work: canonical semantic facts, overload/demand/instantiation,
-  lowering, ABI/ELF and executable quality. These remain later-stage owners;
-  source-to-ELF validation is unavailable at PA5, not certified.
+Repair commit `6e277374` fixes qualified member-template parameter visibility,
+shared `decltype`-qualified/`typename`/explicit-`template` syntax, dependent
+statement declaration versus conversion ambiguity, structured callee retention,
+and enum/lambda-return/`sizeof...` rendering interactions. Owners and regressions
+are recorded in `pa5/audit.md`. The final evidence/docs commit consolidates the
+review; no course reference correction or target reclassification was needed.
+
+## Validation and performance
+
+Delivery required gates pass: `perl scripts/cppgm_file_audit.pl --stage pa5
+--paths dev/src` and `make test-report-through-pa5` (393/393), rerun after
+consolidation (`consolidated-fileAudit.log`, `consolidated-through.log`,
+`consolidated-gates.exit`: 0). Independent
+controls: ordinary 13, scope 23, class 30, template 32 families, six grammar
+rejections per group; **42** GCC/Clang-qualified exact reference interaction
+comparisons; 11 inherited/new capability probes; **211 prefixes + 7** deferred
+rejection reducers. Final ASan/UBSan: all 188 fixtures and family controls;
+**223** accepted-fixture/interaction graphs verify unique ownership, locations,
+acyclic scopes, shared overlays, parser-death survival and stable dumps.
+Compact-index oracle **171529 keys**; inherited PA1–PA4 controls pass.
+
+Frozen protocol, same-input host/reference/A/B medians/ranges, phase/work and
+size evidence: `student.tests/pa5/loop14-evidence.md`, artifacts
+`$RALPH_ARTIFACT_DIR/pa5/loop14/`. Final2 uses CPU3, three interleaved repeats,
+primary instructions/cycles + per-run IPC, separate branch/cache passes,
+100% running; noisy ordinary/parameter timings investigated with five isolated
+repeats and accumulated profiles. Every observation is preserved.
+
+Student/GCC compiler-instruction ratios: ordinary **1.061×**, scopes **1.243×**,
+classes **0.247×**, parameters **1.608×**, templates **0.705×**. Final correctness
+repairs add ~0.17–0.19% instructions, not a claimed speedup; timing ranges overlap
+entry. Compiler text/data/bss **425172/4128/1568 bytes**. Profiled inherited
+conditional preprocessing remains **3.382× GCC**, separately disclosed with its
+prior owner repairs and proportional scaling. Parameter/arena/cursor constant
+factors remain tuning opportunities, not a waived nonlinear ownership defect.
+All historical measurements/targets remain; timeouts are hang guards, not budgets.
+
+## Ledger and retained obligations
+
+- Complete: accumulated whole-stage source/capability/ownership/cost review,
+  all unaudited loop-13 handoffs (`d59b9532`, `ef9d937d`, `112d17ee`), final repairs
+  and validation. No unaudited PA5 code handoff remains through the review tip.
+- No known required PA5 C++11 syntax, correctness, self-containment, timeout,
+  file-audit or stage-due architecture defect remains. Vendor extensions/builtin
+  transforms, `__type_pack_element`, `unsigned __int128`, `_Float32` remain outside
+  this grammar; their hosted-header gaps and same-source comparisons stay in
+  `student.tests/pa5/reference-notes.md`. They are not counted as portable passes.
+- Future owners must consume this graph directly: canonical semantic identity,
+  deduction/instantiation, demanded work, effects/alias facts, typed LowIR,
+  per-function MIR and direct ELF. A source-to-ELF/demanded-template trace and
+  generated runtime/text/object measurements are unavailable at PA5, not certified.
+- Keep stage-due supplemental controls active thereafter. Preserve optimization
+  legality/profitability/invalidation and work/growth budgets at their owning PAs,
+  PA24/26 call/EH constraints, PA32 dataflow/inlining and PA33 allocation/cleanup.
+  PA33/PA34's per-workload **≤1.25× GCC O2/O3 executable-instruction gate** remains
+  mandatory; PA34 whole-self runtime is separate. Frontend ratios do not waive it.
