@@ -64,6 +64,18 @@ for source in [
 ]:
     invoke(source, False)
 
+# Course-compatible attribute probes are compacted in one pass. Unknown
+# attribute names evaluate to zero in both hosts; mix ordinary operands around
+# adjacent probes so in-place moves cannot lose or replay neighboring tokens.
+for count in (1000, 4000, 16000):
+    expression = ' && '.join(['(1 + __has_cpp_attribute(pa4_unknown_attribute) == 1)'] * count)
+    source = '#if ' + expression + '\ndone\n#else\n#error probe compaction\n#endif\n'
+    assert records(invoke(source)) == ['identifier done']
+    portable(source, 'done')
+for source in ('#if __has_cpp_attribute x\n#endif\n',
+               '#if __has_cpp_attribute(unknown\n#endif\n'):
+    invoke(source, False)
+
 # Includes, once identity, conditional state and macro state are per TU.
 source = '#include "header.hh"\n#include "./header.hh"\nM\n'
 assert records(invoke(source, companions={'header.hh':'#pragma once\n#define M 9\n5\n'})) == ['literal 5 int 05000000','literal 9 int 09000000']

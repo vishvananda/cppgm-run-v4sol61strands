@@ -28,13 +28,16 @@ ASan+UBSan, Clang-built implementation, inherited PA1–3 personal controls and
 PA2–3 independent-oracle audit controls pass. No references/coverage changed.
 
 ## Performance evidence
-See `performance.md` and `student.tests/pa4/README.md`. Nine same-source families,
+See `performance.md` and `student.tests/pa4/README.md`. Twelve same-source families,
 warm pinned three-repeat instructions/cycles/IPC plus time/RSS, GCC/Clang/ref and
-frozen A/B binaries; raw artifact labels retained. Final `source-owned` cursor
+frozen A/B binaries; raw artifact labels retained. Final `final-handoff` cursor
 instructions/GCC: 0.55x aliases, 1.10x arguments, 1.53x paste, 2.65x definitions,
-3.53x conditional; conditional .55–.62s, 15.5 MiB vs GCC .15s, 23.7 MiB.
-Disproportionate families profiled; remaining gap is lexer/conversion/operand
-cost, not whole-TU search or descendant replay. Timing gains with overlapping
+3.53x conditional; conditional .61–.64s, 15.5 MiB vs GCC .16s, 23.7 MiB.
+Final audit also fixed quadratic attribute-probe erasure: linear compaction,
+qualified 1k/4k/16k controls. Paired 16k instructions 475.7M vs 97107.8M,
+median .11s vs 15.00s; final full-run .13–.14s / 63.1 MiB, 3.13x GCC
+instructions, 4.33x wall / 2.92x RSS. Disproportionate families profiled;
+remaining gap is lexer/conversion/operand cost, not whole-TU search or descendant replay. Timing gains with overlapping
 ranges remain inconclusive, not waived. Generated runtime/size N/A at PA4.
 100k nesting passes: 400k indexed tokens / 100k spans, .21s, 109 MiB. The prior
 8k-depth/12 GiB crash and repeated-call paint growth are fixed. Host Clang's
@@ -47,5 +50,7 @@ Independent audit questions (not waived): broader course paint interactions,
 raw/pasted-token source provenance, many-header once/path cache behavior,
 conditional-cost capability coverage beyond fixtures. Hosted-system headers
 are later-stage work per handout, not an unimplemented PA4 acceptance claim.
+Final required reports ran serially after rejecting shared-state parallel totals;
+final file audit 36 files; sanitizer/Clang and inherited controls rerun.
 Boundary: full validated implementation handoff, not assignment certification;
 Ralph owns independent audit and advancement. Review markers above preserved.

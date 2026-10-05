@@ -10,7 +10,7 @@ import shutil
 import statistics
 import subprocess
 ROOT=pathlib.Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser(); p.add_argument('artifact',type=pathlib.Path);p.add_argument('--label',default='initial');p.add_argument('--against');a=p.parse_args()
+p=argparse.ArgumentParser(); p.add_argument('artifact',type=pathlib.Path);p.add_argument('--label',default='initial');p.add_argument('--against');p.add_argument('--only', nargs='+', help='measure named workload subset, retaining all earlier artifacts');a=p.parse_args()
 A=a.artifact.resolve()/a.label; A.mkdir(parents=True,exist_ok=False)
 cpu=min(os.sched_getaffinity(0))
 def run(cmd,**kw): return subprocess.run(list(map(str,cmd)),check=True,**kw)
@@ -30,7 +30,11 @@ if a.against:
     variants['before_cursor']=[before/'cursor']
     variants['before_preproc']=[before/'preproc','-o',A/'before_dump']
 inputs={}
-for name in ['text','lookup','arguments','pastes','deep','conditional','includes','aliases','nested']:
+workloads=['text','lookup','arguments','pastes','deep','conditional','includes','aliases','nested','probes1000','probes4000','probes16000']
+if a.only:
+    assert set(a.only)<=set(workloads), 'unknown workload'
+    workloads=[name for name in workloads if name in a.only]
+for name in workloads:
     path=A/(name+'.cc')
     if name=='text': text='done\n'*300000; expected=300000
     elif name=='lookup':
@@ -43,6 +47,10 @@ for name in ['text','lookup','arguments','pastes','deep','conditional','includes
         text='#define F0() done\n'+''.join(f'#define F{i}() F{i-1}()\n' for i in range(1,30001))+'#define REP(x) x x x x\nREP(F30000())\n';expected=4
     elif name=='conditional':
         text='#define FLAG 7\n'+ '#if defined(FLAG) && FLAG==7 && (1 || 1/0)\ndone\n#else\n#error fail\n#endif\n'*85000;expected=85000
+    elif name.startswith('probes'):
+        count=int(name[6:])
+        expression=' && '.join(['(1 + __has_cpp_attribute(pa4_unknown_attribute) == 1)']*count)
+        text='#if '+expression+'\ndone\n#else\n#error probe compaction\n#endif\n';expected=1
     elif name=='nested':
         text='#define F(x) x\n'+('F('*1000+'done'+')'*1000+'\n')*60;expected=60
     elif name=='aliases':
@@ -54,7 +62,7 @@ for name in ['text','lookup','arguments','pastes','deep','conditional','includes
 manifest={'cpu':cpu,'cpu_model':next(s for s in pathlib.Path('/proc/cpuinfo').read_text().splitlines() if s.startswith('model name')),
           'flags':flags,'commands':{k:list(map(str,v)) for k,v in variants.items()},'inputs':inputs,
           'hashes':{k:sha(shutil.which(str(v[0]))) for k,v in variants.items()},
-          'source_hashes':{str(x.relative_to(ROOT)):sha(x) for x in [ROOT/'dev/preproc.cpp',ROOT/'student.tests/pa4/bench.cpp',*sources]},
+          'source_hashes':{str(x.relative_to(ROOT)):sha(x) for x in [ROOT/'dev/preproc.cpp',ROOT/'student.tests/pa4/bench.cpp',*sources,*sorted((ROOT/'dev/src/preprocess').rglob('*.h'))]},
           'gcc_cc1plus_hash':sha(subprocess.check_output(['g++','-print-prog-name=cc1plus'],text=True).strip()),
           'reference_binary_hash':sha(ROOT/'reference-binaries/preproc'),
           'hosts':{c:subprocess.check_output([c,'--version'],text=True).splitlines()[0] for c in ['g++','clang++']},

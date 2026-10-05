@@ -18,7 +18,7 @@ g++ -std=c++11 -O2 -Idev/src student.tests/pa4/cursor.cpp \
 `check.py` tests raw/expanded arguments, paste/placemarkers, recursion suppression,
 conditionals, line directives, diagnostics, concatenation across directives,
 includes/once identities, TU resets, random DAG expansion, 30k alias chains,
-100k repeated aliases, 20k define/undef cycles and 100k nested arguments.
+100k repeated aliases, 20k define/undef cycles and 100k nested arguments, and qualified 1k/4k/16k attribute-probe expressions.
 Portable cases are qualified with both GCC and Clang; course-specific paint
 cases stay in the unchanged course suite. `PA4_TOOL` selects sanitizer or
 alternate-host-built executables. `cursor.cpp` verifies physical source range,
@@ -29,9 +29,11 @@ structured cursor; runs GCC, Clang and reference on identical source bytes;
 checks all produced tokens before measuring; saves raw instructions/cycles,
 IPC, enabled/running percentages, wall/user/system/RSS and work telemetry.
 One warmup and three pinned, interleaved repeats use the first allowed CPU.
-`--against` includes frozen prior cursor/tool binaries. Nine workloads cover
+`--against` includes frozen prior cursor/tool binaries. Twelve workloads cover
 text, dense lookup, repeated arguments, pasting, deep aliases, conditionals,
-repeated includes, repeated aliases and nested arguments. No native executable
+repeated includes, repeated aliases, nested arguments, and three scaled
+attribute-probe operands. `--only conditional probes1000 probes4000 probes16000`
+restricts a paired fix investigation without replacing full-run evidence. No native executable
 is generated at PA4: program runtime/text size and PA33/34's executable
 instruction gate are N/A here, not waived for their owning stages.
 

@@ -19,6 +19,27 @@ struct Identity {
     bool operator==(const Identity& b) const { return device==b.device && inode==b.inode; }
 };
 struct IdentityHash { std::size_t operator()(const Identity& v) const { return v.device*0x9e3779b97f4a7c15ULL ^ v.inode; } };
+void compact_attribute_probes(std::vector<PPItem>& v, MacroEngine& macros) {
+    // Compact in place: each input item is visited/moved at most once.
+    // Repeated vector erasure here would shift the remaining operand for
+    // every probe, making long controlling expressions quadratic.
+    std::size_t write=0;
+    for(std::size_t read=0;read<v.size();++read) {
+        if(v[read].text!="__has_cpp_attribute") {
+            if(write!=read) v[write]=std::move(v[read]);
+            ++write;
+            continue;
+        }
+        PPItem origin=std::move(v[read]);
+        require(++read<v.size() && punctuation(v[read],"("),"attribute probe requires (");
+        std::string name;
+        while(++read<v.size() && !punctuation(v[read],")")) name+=v[read].text;
+        require(read<v.size(),"unterminated attribute probe");
+        bool present=name=="no_unique_address" || name=="__no_unique_address__";
+        v[write++]=macros.synthetic(present?"201803L":"0",origin);
+    }
+    v.resize(write);
+}
 // Structured adapter for a bounded directive operand. No lexical replay.
 class OperandSource : public PPSource {
     const std::vector<PPItem>& items_; std::size_t index_=0;
@@ -170,18 +191,7 @@ struct Preprocessor::Impl {
                 }
             }
         }
-        for(std::size_t i=0;i<v.size();++i) {
-            if(v[i].text!="__has_cpp_attribute") continue;
-            const std::size_t begin=i;
-            PPItem origin=v[i];
-            require(++i<v.size() && punctuation(v[i],"("),"attribute probe requires (");
-            std::string name;
-            while(++i<v.size() && !punctuation(v[i],")")) name+=v[i].text;
-            require(i<v.size(),"unterminated attribute probe");
-            bool present=name=="no_unique_address" || name=="__no_unique_address__";
-            v[begin]=macros.synthetic(present?"201803L":"0",origin);
-            v.erase(v.begin()+begin+1,v.begin()+i+1); i=begin;
-        }
+        compact_attribute_probes(v,macros);
         v=macros.expand_owned(std::move(v),builtins());
         OperandSource source(v); PostCursor cursor(source,ids,false,true);
         ControllingExpression expression(cursor,ids,query,this);
