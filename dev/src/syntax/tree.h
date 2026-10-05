@@ -23,7 +23,8 @@ struct SyntaxScope {
     unsigned namespace_depth = 0;
     // A compact default-argument overlay freezes only parameter visibility.
     // Maps and complete-class bindings remain shared with the original scope.
-    bool parameter_prefix = false;
+    bool parameter_prefix = false, template_environment = false;
+    SyntaxScopeId names_owner = 0; // non-owning template frame view for qualified members
     std::uint32_t parameter_limit = 0;
     SyntaxIndex<SyntaxBinding> names;
     std::vector<SyntaxScopeId> bases;
@@ -50,7 +51,7 @@ struct SyntaxScope {
  X(InitDeclarators,"init-declarator-list") X(InitDeclarator,"init-declarator") \
  X(Initializer,"initializer") X(ParenInitializer,"paren-initializer") \
  X(BracedInit,"braced-init-list") X(TypeId,"type-id") X(TypeSpecifiers,"type-specifier-seq") \
- X(Decltype,"decltype-specifier") X(TypeSpecifier,"type-specifier") X(TypeName,"type-name") \
+ X(Decltype,"decltype-specifier") X(TypeSpecifier,"type-specifier") X(TypeName,"type-name") X(QualifiedTypeName,"qualified-type-name") \
  X(Class,"class-specifier") X(BaseClause,"base-clause") X(Base,"base-specifier") X(BaseName,"base-name") X(Access,"access-specifier") X(Virtual,"virtual") X(VirtSpecifier,"virt-specifier") X(MemberSpecifiers,"member-specifiers") X(MemberSpecifier,"specifier") X(SpecialDeclaration,"special-member-declaration") X(SpecialDefinition,"special-member-definition") X(SpecialInitializer,"special-initializer") X(CtorInitializer,"ctor-initializer") X(MemInitializer,"mem-initializer") X(MemInitializerId,"mem-initializer-id") X(BitField,"bit-field-declaration") X(BitDeclarator,"bit-field-declarator") X(ClassForward,"class-forward-declaration") X(ClassKey,"class-key") X(Linkage,"linkage-specification") X(Alias,"alias-declaration") X(StaticAssert,"static-assert-declaration") X(Message,"message") \
  X(Compound,"compound-statement") X(ExpressionStatement,"expression-statement") \
  X(Return,"return-statement") X(Break,"break-statement") X(Continue,"continue-statement") \
@@ -87,7 +88,7 @@ struct SyntaxNode {
     SimpleKind token = SimpleKind::KW_AUTO;
     IdentifierId name = 0;
     std::uint32_t first = 0, last = 0, offset = 0, length = 0, literal = 0;
-    bool token_literal_view = false, typename_keyword = false, template_keyword = false, destructor = false, complete_definition = false, is_decltype = false, is_operator = false, operator_array = false, member_pointer = false, operator_literal = false, operator_conversion = false, global_scope = false, has_parentheses = false;
+    bool lambda_return = false, token_literal_view = false, typename_keyword = false, template_keyword = false, destructor = false, complete_definition = false, is_decltype = false, is_operator = false, operator_array = false, member_pointer = false, operator_literal = false, operator_conversion = false, global_scope = false, has_parentheses = false;
     NodeId initializer = 0;
     SyntaxScopeId scope = 0, resolved_scope = 0, qualifier_scope = 0;
     SyntaxCategory category = SyntaxCategory::unknown;
@@ -122,7 +123,7 @@ public:
     NodeId literal(const PostToken&);
     void append(NodeId parent, NodeId child);
     NodeId child(NodeId parent) const;
-    std::string compact(NodeId, const IdentifierTable&, bool omit_root_typename=false) const;
+    std::string compact(NodeId, const IdentifierTable&, bool omit_root_typename=false, bool omit_root_template=false) const;
     void dump(std::ostream&, const IdentifierTable&, NodeId root) const;
 };
 int emit_ast(const std::string& output, const std::vector<std::string>& inputs, bool telemetry = false);

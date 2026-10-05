@@ -104,13 +104,13 @@ NodeId SyntaxParser::specs(bool type, bool force, NodeId result, bool has_type, 
             tree_.append(result,leaf(k,t));
         } else if ((peek().kind==PostKind::identifier && peek().identifier==attribute_id_) || at(SimpleKind::KW_ALIGNAS) || (at(SimpleKind::OP_LSQUARE) && at(SimpleKind::OP_LSQUARE,1))) {
             attributes(result);
-        } else if (!has_type && eat(SimpleKind::KW_DECLTYPE)) {
-            has_type=true; if (!require(SimpleKind::OP_LPAREN)) { return 0; }
-            NodeId n=tree_.node(type ? SyntaxKind::Decltype : SyntaxKind::DeclSpecifier,t.location);
-            tree_.nodes[n].is_decltype=true;
-            tree_.append(n,expression()); if (!require(SimpleKind::OP_RPAREN)) { return 0; } tree_.append(result,n);
+        } else if (!has_type && at(SimpleKind::KW_DECLTYPE)) {
+            has_type=true;
+            tree_.append(result,decltype_name(type ? SyntaxKind::Decltype : SyntaxKind::DeclSpecifier));
         } else if (!has_type && eat(SimpleKind::KW_TYPENAME)) {
-            has_type=true; tree_.append(result,qualified(type ? SyntaxKind::TypeName : SyntaxKind::DeclSpecifier));
+            has_type=true;
+            auto kind=type ? SyntaxKind::TypeName : SyntaxKind::DeclSpecifier;
+            tree_.append(result,at(SimpleKind::KW_DECLTYPE) ? decltype_name(kind,true) : qualified(kind));
         } else if (!has_type && at(SimpleKind::KW_ENUM)) {
             has_type=true; tree_.append(result,enum_specifier());
         } else if (!has_type && (at(SimpleKind::KW_CLASS) || at(SimpleKind::KW_STRUCT) || at(SimpleKind::KW_UNION))) {
@@ -214,7 +214,7 @@ NodeId SyntaxParser::declarator(bool abstract, bool allow_name, bool allocation)
     if (eat(SimpleKind::OP_DOTS)) tree_.append(result,raw(SyntaxKind::ParameterPack,SimpleKind::OP_DOTS));
     if (allow_name && (peek().kind==PostKind::identifier || at(SimpleKind::KW_OPERATOR) || at(SimpleKind::OP_COMPL))) {
         NodeId n=qualified(SyntaxKind::Identifier); tree_.append(result,n);
-        if (tree_.nodes[n].qualifier_scope) tree_.scopes[active_.back()].parent=tree_.nodes[n].qualifier_scope;
+        if (tree_.nodes[n].qualifier_scope) qualify_scope(tree_.nodes[n].qualifier_scope);
     }
     else if (at(SimpleKind::OP_LPAREN) && (at(SimpleKind::OP_STAR,1) || at(SimpleKind::OP_AMP,1) || at(SimpleKind::OP_LAND,1) || (peek(1).kind==PostKind::identifier && (!type_start(1) || at(SimpleKind::OP_COLON2,2))))) {
         take(); NodeId nested=tree_.node(SyntaxKind::NestedDeclarator);
@@ -315,7 +315,12 @@ NodeId SyntaxParser::declaration_impl() {
     if (at(SimpleKind::KW_NAMESPACE) || (at(SimpleKind::KW_INLINE) && at(SimpleKind::KW_NAMESPACE,1))) return namespace_declaration();
     if (at(SimpleKind::KW_ENUM)) {
         NodeId e=enum_specifier();
-        if (eat(SimpleKind::OP_SEMICOLON)) return e;
+        if (eat(SimpleKind::OP_SEMICOLON)) {
+            if (classes_.empty()) return e;
+            NodeId result=tree_.node(SyntaxKind::SimpleDeclaration);
+            NodeId spec=tree_.node(SyntaxKind::DeclSpecifiers);
+            tree_.append(spec,e); tree_.append(result,spec); return result;
+        }
         // The common declaration path also handles enum object declarators.
         NodeId s=tree_.node(SyntaxKind::DeclSpecifiers); tree_.append(s,e);
         return declaration_tail(specs(false,false,s,true),false);

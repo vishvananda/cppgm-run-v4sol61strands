@@ -60,7 +60,7 @@ void SyntaxTree::append(NodeId parent, NodeId child) {
     nodes[parent].last=e;
 }
 NodeId SyntaxTree::child(NodeId parent) const { return nodes[parent].first ? edges[nodes[parent].first].child : 0; }
-std::string SyntaxTree::compact(NodeId id, const IdentifierTable& ids, bool omit_root_typename) const {
+std::string SyntaxTree::compact(NodeId id, const IdentifierTable& ids, bool omit_root_typename, bool omit_root_template) const {
     // Explicit rendering stack keeps deeply nested expressions off the C++ stack.
     struct Item { NodeId id; const char* text; };
     std::vector<Item> work; work.push_back({id,nullptr}); std::string out;
@@ -96,9 +96,12 @@ std::string SyntaxTree::compact(NodeId id, const IdentifierTable& ids, bool omit
         } else if (n.is_decltype) {
             auto c=children();
             for (std::size_t j=c.size();j>1;--j) { work.push_back({c[j-1],nullptr}); work.push_back({0,"::"}); }
+            if (n.typename_keyword) out+="typename ";
             out+="decltype("; work.push_back({0,")"}); work.push_back({child(i.id),nullptr});
         } else if (n.kind==SyntaxKind::Trait) {
             out+=token_spelling(n.token); out+='('; work.push_back({0,")"}); work.push_back({child(i.id),nullptr});
+        } else if (n.kind==SyntaxKind::SizeofPack) {
+            out+="sizeof...("; auto spelling=ids.spelling(n.name); out.append(spelling.data,spelling.size); out+=')';
         } else if (n.kind==SyntaxKind::Sizeof) {
             out+="sizeof("; work.push_back({0,")"}); work.push_back({child(i.id),nullptr});
         } else if (n.kind==SyntaxKind::TemplateArguments) {
@@ -162,10 +165,10 @@ std::string SyntaxTree::compact(NodeId id, const IdentifierTable& ids, bool omit
         } else {
             if (n.payload==SyntaxPayload::identifier) {
                 if (n.global_scope) out+="::";
-                if (n.template_keyword) out+="template ";
+                if (n.template_keyword && !(omit_root_template && i.id==id)) out+="template ";
                 if (n.typename_keyword && !(omit_root_typename && i.id==id)) out+="typename ";
                 auto spelling=ids.spelling(n.name); out.append(spelling.data,spelling.size);
-                if (n.kind==SyntaxKind::IdExpression || n.kind==SyntaxKind::Identifier || n.kind==SyntaxKind::TypeName || n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::Pointer || n.kind==SyntaxKind::Target || n.kind==SyntaxKind::BaseName || n.kind==SyntaxKind::MemInitializerId || n.kind==SyntaxKind::Class || n.kind==SyntaxKind::ClassForward) {
+                if (n.kind==SyntaxKind::IdExpression || n.kind==SyntaxKind::Identifier || n.kind==SyntaxKind::TypeName || n.kind==SyntaxKind::QualifiedTypeName || n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::Pointer || n.kind==SyntaxKind::Target || n.kind==SyntaxKind::BaseName || n.kind==SyntaxKind::MemInitializerId || n.kind==SyntaxKind::Class || n.kind==SyntaxKind::ClassForward) {
                     if (n.member_pointer) work.push_back({0,"::*"});
                     auto c=children();
                     for (std::size_t j=c.size();j>0;--j) {
@@ -199,7 +202,7 @@ void SyntaxTree::dump(std::ostream& out, const IdentifierTable& ids, NodeId root
         else if (n.payload==SyntaxPayload::identifier) {
             if ((n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::VirtSpecifier) && !n.first && !n.global_scope) out << " TT_IDENTIFIER:";
             else out << ' ';
-            if (n.first && (n.kind==SyntaxKind::IdExpression || n.kind==SyntaxKind::Identifier || n.kind==SyntaxKind::TypeName || n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::Target || n.kind==SyntaxKind::BaseName || n.kind==SyntaxKind::MemInitializerId || n.kind==SyntaxKind::Class || n.kind==SyntaxKind::ClassForward)) out << compact(id,ids,n.kind==SyntaxKind::IdExpression);
+            if (n.first && (n.kind==SyntaxKind::IdExpression || n.kind==SyntaxKind::Identifier || n.kind==SyntaxKind::TypeName || n.kind==SyntaxKind::QualifiedTypeName || n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::Target || n.kind==SyntaxKind::BaseName || n.kind==SyntaxKind::MemInitializerId || n.kind==SyntaxKind::Class || n.kind==SyntaxKind::ClassForward)) out << compact(id,ids,n.kind==SyntaxKind::IdExpression,n.kind==SyntaxKind::QualifiedTypeName);
             else {
                 if (n.global_scope) out << "::";
                 auto spelling=ids.spelling(n.name); out.write(spelling.data,spelling.size);
@@ -221,13 +224,13 @@ void SyntaxTree::dump(std::ostream& out, const IdentifierTable& ids, NodeId root
             out << (n.token_literal_view ? " TT_LITERAL:" : " "); out.write(spellings.data()+n.offset,n.length);
         }
         if (n.kind==SyntaxKind::LambdaIntroducer) out << ' ' << compact(id,ids);
-        if (n.kind==SyntaxKind::TrailingReturn && n.first && nodes[child(child(child(id)))].is_decltype) out << ' ' << compact(child(id),ids);
+        if (n.kind==SyntaxKind::TrailingReturn && !n.lambda_return && n.first && nodes[child(child(child(id)))].is_decltype) out << ' ' << compact(child(id),ids);
         if (n.kind==SyntaxKind::Placement) out << ' ' << compact(child(id),ids);
         out << '\n';
     };
     auto visible_edges=[&](NodeId n) {
         const auto& node=nodes[n];
-        if (node.kind==SyntaxKind::TypeName || node.kind==SyntaxKind::IdExpression || node.kind==SyntaxKind::Identifier || node.kind==SyntaxKind::Target || node.kind==SyntaxKind::BaseName || node.kind==SyntaxKind::MemInitializerId || node.kind==SyntaxKind::LambdaIntroducer ||
+        if (node.kind==SyntaxKind::TypeName || node.kind==SyntaxKind::QualifiedTypeName || node.kind==SyntaxKind::IdExpression || node.kind==SyntaxKind::Identifier || node.kind==SyntaxKind::Target || node.kind==SyntaxKind::BaseName || node.kind==SyntaxKind::MemInitializerId || node.kind==SyntaxKind::LambdaIntroducer ||
             node.member_pointer || (node.payload==SyntaxPayload::identifier && node.kind==SyntaxKind::DeclSpecifier) ||
             (node.kind==SyntaxKind::FunctionQualifier && node.token==SimpleKind::KW_THROW)) return std::uint32_t(0);
         return node.first;

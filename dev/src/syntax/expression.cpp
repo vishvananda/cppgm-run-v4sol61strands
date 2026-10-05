@@ -106,15 +106,9 @@ NodeId SyntaxParser::primary() {
     if (expected_) return 0;
     if (at(SimpleKind::OP_LSQUARE)) return lambda();
     if (eat(SimpleKind::KW_TYPENAME)) {
-        NodeId n=qualified(SyntaxKind::IdExpression); tree_.nodes[n].typename_keyword=true; return n;
+        NodeId n=at(SimpleKind::KW_DECLTYPE) ? decltype_name(SyntaxKind::IdExpression,true) : qualified(SyntaxKind::IdExpression); tree_.nodes[n].typename_keyword=true; return n;
     }
-    if (eat(SimpleKind::KW_DECLTYPE)) {
-        NodeId result=tree_.node(SyntaxKind::IdExpression); tree_.nodes[result].is_decltype=true;
-        if (!require(SimpleKind::OP_LPAREN)) return 0;
-        tree_.append(result,expression()); if (!require(SimpleKind::OP_RPAREN)) return 0;
-        if (eat(SimpleKind::OP_COLON2)) tree_.append(result,qualified(SyntaxKind::Identifier));
-        return result;
-    }
+    if (at(SimpleKind::KW_DECLTYPE)) return decltype_name(SyntaxKind::IdExpression);
     if (peek().kind==PostKind::identifier || at(SimpleKind::OP_COLON2) || at(SimpleKind::KW_OPERATOR)) return qualified(SyntaxKind::IdExpression);
     const auto t=take();
     if (t.kind!=PostKind::simple && t.kind!=PostKind::invalid && t.kind!=PostKind::eof) return t.literal_node;

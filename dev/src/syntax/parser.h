@@ -20,6 +20,7 @@ class SyntaxParser {
     SyntaxScopeId common_namespace(SyntaxScopeId, SyntaxScopeId) const;
     void import_scope(SyntaxScopeId, SyntaxScopeId);
     void enter(SyntaxScopeId);
+    void qualify_scope(SyntaxScopeId);
     SyntaxBinding lookup(IdentifierId, SyntaxScopeId, bool parents=true, bool qualifier=false, bool namespace_only=false);
     Category hint(IdentifierId);
     void bind(IdentifierId, Category, SyntaxScopeId target=0);
@@ -29,6 +30,7 @@ class SyntaxParser {
     NodeId enum_specifier();
     NodeId class_specifier();
     NodeId class_name(SyntaxKind);
+    NodeId decltype_name(SyntaxKind, bool typename_keyword=false);
     NodeId special_member(NodeId specs=0, NodeId parsed_name=0);
     NodeId function_body(NodeId, bool ready=false);
     NodeId ctor_initializer();
@@ -64,7 +66,7 @@ class SyntaxParser {
     NodeId template_arguments();
     NodeId template_argument();
     NodeId qualified_component(SyntaxKind);
-    NodeId qualified_raw(SyntaxKind, bool namespace_only=false);
+    NodeId qualified_raw(SyntaxKind, bool namespace_only=false, bool explicit_template=false);
     std::size_t tokens_=0, queries_=0, max_lookahead_=0;
     InputToken take();
     const PostToken& peek(unsigned offset=0);
@@ -109,7 +111,7 @@ class SyntaxParser {
     NodeId scoped_statement();
     NodeId condition();
     NodeId for_statement();
-    NodeId ambiguous_statement();
+    NodeId ambiguous_statement(NodeId spec=0, bool builtin_type=false);
     NodeId suffixes(NodeId, bool allocation=false);
     NodeId qualified(SyntaxKind, bool namespace_only=false);
     NodeId try_statement(NodeId result=0);

@@ -24,12 +24,15 @@ NodeId SyntaxParser::parameter_expression(NodeId p) {
     if (!args) tree_.append(p,tree_.node(builtin_type ? SyntaxKind::ParenArguments : SyntaxKind::Arguments));
     return p;
 }
-NodeId SyntaxParser::ambiguous_statement() {
+NodeId SyntaxParser::ambiguous_statement(NodeId spec, bool builtin_type) {
     if (expected_) return 0;
     // Factor type(expr/declarator) once. No speculative token retention, replay,
     // category mutation or abandoned tree. Reclassify the minimal common nodes.
-    const PostToken type=peek();
-    NodeId spec=specs(); if (!require(SimpleKind::OP_LPAREN)) { return 0; }
+    if (!spec) {
+        builtin_type=peek().kind==PostKind::simple && builtin(peek().simple);
+        spec=specs();
+    }
+    if (!require(SimpleKind::OP_LPAREN)) return 0;
     NodeId inner=0;
     bool declaration_candidate=false;
     prepare_name();
@@ -67,20 +70,18 @@ NodeId SyntaxParser::ambiguous_statement() {
     }
     // Reuse the common type specifier/list nodes for the construction expression.
     NodeId callee=tree_.child(spec); tree_.nodes[callee].kind=SyntaxKind::IdExpression;
-    tree_.nodes[callee].payload=type.kind==PostKind::identifier ? SyntaxPayload::identifier : SyntaxPayload::raw_token;
-    if (!tree_.nodes[callee].first) tree_.nodes[callee].name=type.identifier;
-    tree_.nodes[callee].token=type.simple;
+    if (builtin_type) tree_.nodes[callee].payload=SyntaxPayload::raw_token;
     tree_.nodes[spec].kind=SyntaxKind::Call;
     NodeId args=0;
     if (declaration_candidate) {
         NodeId c=tree_.child(inner);
         if (!c || tree_.nodes[c].kind!=SyntaxKind::Identifier || tree_.edges[tree_.nodes[inner].first].next) return error("expression argument");
-        tree_.nodes[inner].kind=type.kind==PostKind::identifier ? SyntaxKind::Arguments : SyntaxKind::ParenArguments;
+        tree_.nodes[inner].kind=builtin_type ? SyntaxKind::ParenArguments : SyntaxKind::Arguments;
         tree_.nodes[c].kind=SyntaxKind::IdExpression;
         args=inner;
     } else if (inner && tree_.nodes[inner].kind==SyntaxKind::Arguments) {
-        args=inner; tree_.nodes[args].kind=type.kind==PostKind::identifier ? SyntaxKind::Arguments : SyntaxKind::ParenArguments;
-    } else { args=tree_.node(type.kind==PostKind::identifier ? SyntaxKind::Arguments : SyntaxKind::ParenArguments); if (inner) tree_.append(args,inner); }
+        args=inner; tree_.nodes[args].kind=builtin_type ? SyntaxKind::ParenArguments : SyntaxKind::Arguments;
+    } else { args=tree_.node(builtin_type ? SyntaxKind::ParenArguments : SyntaxKind::Arguments); if (inner) tree_.append(args,inner); }
     tree_.append(spec,args);
     NodeId result=tree_.node(SyntaxKind::ExpressionStatement); tree_.append(result,expression_tail(postfix(spec)));
     if (!require(SimpleKind::OP_SEMICOLON)) { return 0; } return result;

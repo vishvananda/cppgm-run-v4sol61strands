@@ -24,6 +24,21 @@ void SyntaxParser::import_scope(SyntaxScopeId owner, SyntaxScopeId target) {
 }
 void SyntaxParser::enter() { enter(create_scope(active_.empty() ? 0 : active_.back(),active_.empty())); }
 void SyntaxParser::enter(SyntaxScopeId scope) { active_.push_back(scope); }
+void SyntaxParser::qualify_scope(SyntaxScopeId target) {
+    // Out-of-class member templates retain their own parameter frames ahead
+    // of class lookup. Share each immutable published name index; never copy
+    // bindings or reconnect a retained template/class environment in place.
+    std::vector<SyntaxScopeId> frames;
+    for (auto s=tree_.scopes[active_.back()].parent;
+         s && tree_.scopes[s].template_environment; s=tree_.scopes[s].parent)
+        frames.push_back(s);
+    for (auto i=frames.rbegin();i!=frames.rend();++i) {
+        auto view=create_scope(target);
+        tree_.scopes[view].names_owner=*i;
+        target=view;
+    }
+    tree_.scopes[active_.back()].parent=target;
+}
 void SyntaxParser::leave() { active_.pop_back(); }
 void SyntaxParser::bind(IdentifierId id, Category value, SyntaxScopeId target) {
     if (!id) return;
@@ -52,7 +67,8 @@ SyntaxBinding SyntaxParser::lookup(IdentifierId id, SyntaxScopeId scope, bool pa
     for (;scope;scope=parents ? tree_.scopes[scope].parent : 0) {
         if (tree_.scopes[scope].parameter_prefix)
             parameter_limit=std::min(parameter_limit,tree_.scopes[scope].parameter_limit);
-        auto direct=tree_.scopes[scope].names.find(id);
+        auto names=tree_.scopes[scope].names_owner ? tree_.scopes[scope].names_owner : scope;
+        auto direct=tree_.scopes[names].names.find(id);
         if (direct && usable(direct->second)) return selected(direct->second);
         // Base lookup is a class-local step, unlike using-directive nominations.
         // Generation stamps bound diamond/cyclic syntax visits to once/query.

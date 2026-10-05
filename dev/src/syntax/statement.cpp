@@ -126,9 +126,19 @@ NodeId SyntaxParser::statement() {
     if (peek().kind==PostKind::identifier && at(SimpleKind::OP_COLON,1)) {
         NodeId result=name(SyntaxKind::Label); take(); tree_.append(result,statement()); return result;
     }
-    if (at(SimpleKind::KW_TYPENAME)) {
-        take(); NodeId result=tree_.node(SyntaxKind::ExpressionStatement);
-        tree_.append(result,expression_tail(postfix(qualified(SyntaxKind::IdExpression))));
+    if (eat(SimpleKind::KW_TYPENAME)) {
+        // Factor the shared dependent type prefix once, then choose a
+        // declaration or functional conversion from its immediate suffix.
+        NodeId n=at(SimpleKind::KW_DECLTYPE) ? decltype_name(SyntaxKind::DeclSpecifier,true) : qualified(SyntaxKind::DeclSpecifier);
+        if (!at(SimpleKind::OP_LBRACE)) {
+            NodeId spec=tree_.node(SyntaxKind::DeclSpecifiers); tree_.append(spec,n);
+            tree_.nodes[spec].category=Category::type;
+            if (at(SimpleKind::OP_LPAREN)) return ambiguous_statement(spec);
+            return declaration_tail(spec,false);
+        }
+        tree_.nodes[n].kind=SyntaxKind::IdExpression;
+        NodeId result=tree_.node(SyntaxKind::ExpressionStatement);
+        tree_.append(result,expression_tail(postfix(n)));
         if (!require(SimpleKind::OP_SEMICOLON)) return 0;
         return result;
     }

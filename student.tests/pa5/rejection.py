@@ -23,6 +23,10 @@ with tempfile.TemporaryDirectory() as directory:
   'namespace patterns { template<class value> struct box { box():data{} {} box(value',
   'namespace patterns { struct box { int f() { return (; } }; }',
   'namespace patterns { template<class value> struct box { int f(int x=sizeof()); }; }',
+  'template<class v> void f(v x) {typename decltype(x)::template item<int y;}',
+  'template<class v> void f(v x) {typename decltype(x) y;}',
+  'template<class v> struct box {template<class u> u f(u);}; template<class v> template<class u> u box<v>::f(u x) {return (;}',
+  'struct x {enum class type:int {a=};};',
  ]
  for text in reducers:
   p=d/'reduced.cpp';p.write_text(text)

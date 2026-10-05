@@ -96,6 +96,7 @@ NodeId SyntaxParser::template_declaration() {
     if (ext) return error("template instantiation declaration");
     NodeId result=tree_.node(SyntaxKind::TemplateDeclaration);
     SyntaxScopeId owner=active_.back(); enter(); tree_.nodes[result].scope=active_.back();
+    tree_.scopes[active_.back()].template_environment=true;
     tree_.append(result,template_clause());
     ++template_depth_; NodeId body=declaration(); --template_depth_;
     // Failed nested productions need not balance active scopes. Do not publish

@@ -51,7 +51,7 @@ NodeId SyntaxParser::lambda() {
             if (eat(SimpleKind::OP_LPAREN)) { tree_.append(q,expression()); if (!require(SimpleKind::OP_RPAREN)) { return 0; } }
             tree_.append(d,q);
         }
-        if (eat(SimpleKind::OP_ARROW)) { NodeId r=tree_.node(SyntaxKind::TrailingReturn); tree_.append(r,type_id()); tree_.append(d,r); }
+        if (eat(SimpleKind::OP_ARROW)) { NodeId r=tree_.node(SyntaxKind::TrailingReturn); tree_.nodes[r].lambda_return=true; tree_.append(r,type_id()); tree_.append(d,r); }
         tree_.append(result,d);
     }
     tree_.append(result,compound()); leave(); return result;

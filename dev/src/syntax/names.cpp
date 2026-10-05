@@ -1,5 +1,19 @@
 #include "syntax/parser.h"
 namespace cppgm {
+NodeId SyntaxParser::decltype_name(SyntaxKind kind, bool typename_keyword) {
+    auto token=take();
+    NodeId result=tree_.node(kind,token.location);
+    tree_.nodes[result].is_decltype=true;
+    tree_.nodes[result].typename_keyword=typename_keyword;
+    if (!require(SimpleKind::OP_LPAREN)) return 0;
+    tree_.append(result,expression()); if (!require(SimpleKind::OP_RPAREN)) return 0;
+    if (eat(SimpleKind::OP_COLON2)) {
+        bool explicit_template=eat(SimpleKind::KW_TEMPLATE);
+        tree_.append(result,qualified_raw(kind==SyntaxKind::IdExpression ? SyntaxKind::Identifier : SyntaxKind::QualifiedTypeName,false,explicit_template));
+    }
+    else if (typename_keyword) return error("qualified typename");
+    return result;
+}
 NodeId SyntaxParser::qualified_component(SyntaxKind kind) {
     if (expected_) return 0;
     // Every name component has compact identity. The joined leaf is dump-only.
@@ -48,11 +62,12 @@ NodeId SyntaxParser::qualified(SyntaxKind kind, bool namespace_only) {
     }
     return qualified_raw(kind,namespace_only);
 }
-NodeId SyntaxParser::qualified_raw(SyntaxKind kind, bool namespace_only) {
+NodeId SyntaxParser::qualified_raw(SyntaxKind kind, bool namespace_only, bool explicit_template) {
     if (expected_) return 0;
     bool global=eat(SimpleKind::OP_COLON2);
     SyntaxScopeId scope=global ? active_.front() : active_.back();
     NodeId result=qualified_component(kind), component=result;
+    tree_.nodes[result].template_keyword=explicit_template;
     tree_.nodes[result].global_scope=global;
     bool parents=!global;
     bool member=member_name_; member_name_=false;

@@ -3,10 +3,7 @@
 namespace cppgm {
 NodeId SyntaxParser::class_name(SyntaxKind kind) {
     if (expected_) return 0;
-    if (!eat(SimpleKind::KW_DECLTYPE)) return qualified(kind);
-    NodeId result=tree_.node(kind); tree_.nodes[result].is_decltype=true;
-    if (!require(SimpleKind::OP_LPAREN)) { return 0; } tree_.append(result,expression()); if (!require(SimpleKind::OP_RPAREN)) { return 0; }
-    return result;
+    return at(SimpleKind::KW_DECLTYPE) ? decltype_name(kind) : qualified(kind);
 }
 bool SyntaxParser::special_start() {
     if (at(SimpleKind::OP_COMPL)) return true;
@@ -116,7 +113,7 @@ NodeId SyntaxParser::special_member(NodeId spec, NodeId parsed_name) {
     }
     enter(); NodeId d=tree_.node(SyntaxKind::Declarator); tree_.nodes[d].scope=active_.back();
     NodeId n=parsed_name ? parsed_name : qualified(SyntaxKind::Identifier); tree_.append(d,n);
-    if (tree_.nodes[n].qualifier_scope) tree_.scopes[active_.back()].parent=tree_.nodes[n].qualifier_scope;
+    if (tree_.nodes[n].qualifier_scope) qualify_scope(tree_.nodes[n].qualifier_scope);
     // Constructor/destructor/conversion names have no return type.
     if (!at(SimpleKind::OP_LPAREN)) return error("special member parameter clause");
     suffixes(d); tree_.nodes[d].scope=active_.back(); tree_.append(result,d);
