@@ -83,7 +83,7 @@ NodeId SyntaxParser::unary_atom() {
         }
         NodeId result=t.simple==SimpleKind::KW_SIZEOF ? tree_.node(SyntaxKind::Sizeof,t.location) : leaf(SyntaxKind::Trait,t);
         if (eat(SimpleKind::OP_LPAREN)) {
-            if (type_start()) tree_.append(result,type_id());
+            if (t.simple!=SimpleKind::KW_NOEXCEPT && type_start() && !at(SimpleKind::OP_LPAREN,1)) tree_.append(result,type_id());
             else tree_.append(result,expression());
             require(SimpleKind::OP_RPAREN);
         } else tree_.append(result,unary());
@@ -99,7 +99,7 @@ NodeId SyntaxParser::unary_atom() {
 }
 NodeId SyntaxParser::primary() {
     if (at(SimpleKind::OP_LSQUARE)) return lambda();
-    if (peek().kind==PostKind::identifier || at(SimpleKind::OP_COLON2)) return qualified(SyntaxKind::IdExpression);
+    if (peek().kind==PostKind::identifier || at(SimpleKind::OP_COLON2) || at(SimpleKind::KW_OPERATOR)) return qualified(SyntaxKind::IdExpression);
     const auto t=take();
     if (t.kind!=PostKind::simple && t.kind!=PostKind::invalid && t.kind!=PostKind::eof) return t.literal_node;
     if (t.kind!=PostKind::simple) error("expression");

@@ -33,7 +33,7 @@ class SyntaxParser {
     NodeId raw(SyntaxKind, SimpleKind);
     NodeId name(SyntaxKind);
     NodeId specs(bool type=false);
-    NodeId declarator(bool abstract=false, bool allow_name=true);
+    NodeId declarator(bool abstract=false, bool allow_name=true, bool allocation=false);
     NodeId parameters();
     NodeId type_id(bool allocation=false);
     NodeId initializer(bool equal=false);
@@ -54,7 +54,7 @@ class SyntaxParser {
     NodeId condition();
     NodeId for_statement();
     NodeId ambiguous_statement();
-    NodeId suffixes(NodeId);
+    NodeId suffixes(NodeId, bool allocation=false);
     NodeId qualified(SyntaxKind);
     NodeId try_statement();
     IdentifierId declared_name(NodeId) const;

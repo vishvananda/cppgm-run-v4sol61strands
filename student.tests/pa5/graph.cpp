@@ -6,13 +6,13 @@
 #include <cstring>
 using namespace cppgm;
 int main(int argc, char** argv) {
-    assert(argc==2);
+    assert(argc==2 || argc==3);
     IdentifierTable ids;
     Preprocessor pp(ids,argv[1],"\"Oct  5 2026\"","\"00:00:00\"");
     PostCursor cursor(pp,ids,true); SyntaxTree tree; SyntaxParser parser(cursor,ids,tree);
     NodeId root=parser.parse();
     std::vector<unsigned> seen(tree.nodes.size()); std::vector<NodeId> pending(1,root);
-    unsigned literals=0, names=0, pointers=0, captures=0;
+    unsigned literals=0, names=0, pointers=0, captures=0, twenty_eight=0, strings=0;
     while (!pending.empty()) {
         NodeId id=pending.back(); pending.pop_back(); assert(id && id<seen.size()); assert(!seen[id]++);
         const auto& n=tree.nodes[id];
@@ -22,6 +22,15 @@ int main(int argc, char** argv) {
             assert(v.kind!=PostKind::invalid); assert(n.location.line);
             assert(n.location.offset<=pp.source_buffer(n.location.file).bytes.size());
             assert(n.range.end>=n.range.begin);
+            if (v.kind==PostKind::scalar && v.type==FundamentalType::FT_INT) {
+                int value; std::memcpy(&value,v.scalar.data(),sizeof(value));
+                if (value==28) ++twenty_eight;
+            }
+            if (v.kind==PostKind::array && v.elements>1) {
+                assert(v.width && v.length==v.width*v.elements);
+                assert(v.offset+v.length<=tree.values.size());
+                assert(tree.values[v.offset+v.length-1]==0); ++strings;
+            }
             ++literals;
         }
         if (n.member_pointer) ++pointers;
@@ -31,10 +40,14 @@ int main(int argc, char** argv) {
         assert(last==n.last);
     }
     for (std::size_t i=1;i<seen.size();++i) assert(seen[i]==1); // no abandoned speculative tree
-    assert(literals && names && pointers && captures);
+    assert(names);
+    if (argc==2) assert(literals);
+    if (argc==2) assert(pointers && captures && twenty_eight>=2 && strings>=2);
     assert(parser.max_lookahead()<=4);
     // Destruction/output walk is nonrecursive; semantic/literal identity survives dump.
-    auto count=tree.nodes.size(); auto values=tree.values;
+    auto count=tree.nodes.size();
+    if (argc==3) { std::cout << "PA5 scale graph passed: nodes=" << count-1 << " tokens=" << parser.tokens() << " queries=" << parser.queries() << " lookahead=" << parser.max_lookahead() << '\n'; return 0; }
+    auto values=tree.values;
     std::ostringstream a,b; tree.dump(a,ids,root); tree.dump(b,ids,root);
     assert(a.str()==b.str()); assert(tree.nodes.size()==count); assert(tree.values==values);
     std::cout << "PA5 graph ownership/source/literal/name checks passed: nodes=" << count-1

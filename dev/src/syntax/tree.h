@@ -55,7 +55,7 @@ struct SyntaxNode {
     SimpleKind token = SimpleKind::KW_AUTO;
     IdentifierId name = 0;
     std::uint32_t first = 0, last = 0, offset = 0, length = 0, literal = 0;
-    bool is_decltype = false, is_operator = false, operator_array = false, member_pointer = false, global_scope = false, has_parentheses = false;
+    bool is_decltype = false, is_operator = false, operator_array = false, member_pointer = false, operator_literal = false, operator_conversion = false, global_scope = false, has_parentheses = false;
     SourceRange range = {0,0};
     SourceLocation location = {0,0,0};
 };

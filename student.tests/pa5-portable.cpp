@@ -41,3 +41,8 @@ word scope(word x) {
   auto f = [=, &result] { return result; };
   return f();
 }
+
+#define NUMBER 28
+static_assert(NUMBER == 28, "owned" " message");
+const char* text = "long enough borrowed " "string to cross inline capacity";
+int literals() { return NUMBER + '\n'; }

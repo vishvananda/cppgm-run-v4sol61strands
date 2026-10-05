@@ -73,7 +73,10 @@ std::string SyntaxTree::compact(NodeId id, const IdentifierTable& ids) const {
             for (auto e=n.first;e;e=edges[e].next) list.push_back(edges[e].child);
             return list;
         };
-        if (n.is_operator) {
+        if (n.operator_literal || n.operator_conversion) {
+            out+=n.operator_literal ? "operator\"\"" : "operator";
+            work.push_back({child(i.id),nullptr});
+        } else if (n.is_operator) {
             out+="operator"; out+=token_spelling(n.token);
             if (n.token==SimpleKind::OP_LPAREN) out+=')';
             if (n.token==SimpleKind::OP_LSQUARE) out+=']';
@@ -121,7 +124,7 @@ void SyntaxTree::dump(std::ostream& out, const IdentifierTable& ids, NodeId root
         for (unsigned i=0;i<depth;++i) out << "  ";
         out << kind_name(n.kind);
         if (n.is_decltype) out << ' ' << compact(id,ids);
-        if (n.is_operator || n.member_pointer) out << ' ' << compact(id,ids);
+        if (n.is_operator || n.member_pointer || n.operator_literal || n.operator_conversion) out << ' ' << compact(id,ids);
         else if (n.payload==SyntaxPayload::identifier) {
             if (n.kind==SyntaxKind::DeclSpecifier && !n.first && !n.global_scope) out << " TT_IDENTIFIER:";
             else out << ' ';
