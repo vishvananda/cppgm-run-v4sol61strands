@@ -92,7 +92,7 @@ copying environments or chaining one scope per preceding parameter.
 
 ## Separate dependent-conversion capability observation
 
-`coverage.py` also qualifies this unimplemented capability with both hosts:
+`coverage.py` qualifies this capability with both hosts:
 
 ```cpp
 template<class value> struct lower {
@@ -102,13 +102,39 @@ template<class value>
 lower<value>::operator typename value::type() const { return 0; }
 ```
 
-The student and reference both reject it. This is an unfinished template/dependent
-syntax group, not a fixed class-only behavior. The uninstantiated pattern is valid
-C++11 conversion-function syntax (§12.3.2) with a dependent typename (§14.6).
-Host agreement only qualifies this probe; no course reference is revised on that
-basis. Raw exits/diagnostics remain in `$RALPH_ARTIFACT_DIR/pa5/remaining-capabilities.json`.
+At audit 12 both tools rejected it; loop 13 implements it in the student. The
+reference still rejects the member `operator` declaration. N3485 §12.3.2/1
+(`doc/n3485.txt:14196-14209`) defines the conversion-function-id using a
+type-specifier-seq; §14.6/3 (`:18843-18850`) permits the dependent qualified
+type as a typename-specifier. No instantiation is demanded in this reducer,
+so no dependent-type validity decision is needed. Both hosts accept in C++11
+mode as additional qualification. The integration graph checks its retained
+conversion type independently; all reference-supported personal families still
+compare exact ASTs. No course reference is revised. Raw exits/diagnostics remain
+in `$RALPH_ARTIFACT_DIR/pa5/remaining-capabilities.json`.
 
 All loop-11 observations use the unchanged bundle revision/hash above. Reduced
 source/AST/diagnostic observations also live under
 `$RALPH_ARTIFACT_DIR/pa5/classes/reference-reducers/`. No checked-in output,
 required comparison, coverage, or reference bundle was changed.
+
+## Loop 13 hosted extension boundary
+
+The unchanged bundle above recognizes implementation-specific builtin transform
+types/traits outside `pa5.gram`. GCC 15 expanded `type_traits` uses
+`__add_lvalue_reference`, `__remove_cv`, `__is_enum` and related identifiers;
+student/reference dumps differ in these extension classifications. Reduced
+normalization removes only `__extension__` from expanded bytes; this is not a
+portable qualification. GCC accepts these bytes, while Clang rejects GCC-only
+`__remove_reference` and `__type_pack_element` forms. Utility/tuple rejection
+occurs at `__type_pack_element` template syntax, array at `unsigned __int128`,
+and limits at implementation-specific types (`_Float32` also fails Clang).
+These are extension capabilities to investigate separately, not a reference
+correction or a passing hosted benchmark. Raw/normalized same-source exits,
+source bytes and ASTs are preserved under `$RALPH_ARTIFACT_DIR/pa5/loop13/`
+(`hosted-parser-final.json`, `hosted-normalized-final.json`).
+
+Portable-normalized `cstddef`/`initializer_list` are accepted with matching ASTs;
+the amplified initializer-list/template mix is qualified on identical bytes
+with both hosts before measurement. No required fixture, output, reference
+bundle, or comparison rule changed in loop 13.

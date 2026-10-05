@@ -36,10 +36,10 @@ runtime/text/object size and the mandatory PA33/34 ≤1.25x GCC executable
 instruction gate are future-stage checks, not waived. Compiler latency, RSS,
 compiler binary size and AST view size are reported separately.
 
-`coverage.py` separately qualifies the inherited seven major remaining namespace/class/enum/
-template/dependent/special-member capability probes with GCC, Clang and the
-reference. It records current student failures; those observations are neither
-passing controls nor a substitute for implementing the remaining PA5 grammar.
+`coverage.py` separately qualifies eleven namespace/class/enum/template/
+dependent/special-member probes with GCC and Clang. All now pass the student;
+the dependent conversion remains a reference capability gap. This observation
+is not a substitute for exact fixture and reference-supported comparisons.
 `reference-notes.md` documents reduced personal oracle disagreements with
 C++11 rule proofs and the unchanged bundle revision. No required output changed.
 
@@ -136,3 +136,32 @@ Audit performance evidence (including pre/post rendering fixes and raw spread)
 is under `$RALPH_ARTIFACT_DIR/pa5/audit12`; `pa5/audit.md` identifies the frozen
 binary and protocol. Historical measurements remain in the artifact tree and
 git history; no prior target or stage-due control was weakened.
+
+## Integrated template / dependent syntax (loop 13)
+
+```sh
+python3 student.tests/pa5/templates.py
+# Integration + 32 host-qualified families + 6 rejected grammar cases.
+g++ -std=c++11 -O2 -Idev/src student.tests/pa5/templates-graph.cpp $sources -o "$RALPH_ARTIFACT_DIR/pa5/templates-graph"
+"$RALPH_ARTIFACT_DIR/pa5/templates-graph" student.tests/pa5/templates-portable.cpp
+# Repeat graph builds with clang++ -O1 -g -fsanitize=address,undefined
+# -fno-omit-frame-pointer, and use PA5_TOOL for all Python behavior controls.
+PA5_TOOL="$RALPH_ARTIFACT_DIR/pa5/loop13/cppgm-san-final" python3 student.tests/pa5/rejection.py
+python3 student.tests/pa5/measure-templates.py "$RALPH_ARTIFACT_DIR/pa5/templates-perf"
+```
+
+The integration contains a dependent conversion that the reference rejects;
+it is host-qualified and graph-checked independently (proof in
+`reference-notes.md`). All 32 reference-supported families retain exact AST
+comparison. Parameter kinds/defaults/packs, instantiation publication, operators,
+qualified/dependent expressions, angle/shift boundaries, late complete-class
+regions, attributes and factored declarator ownership are checked together.
+`rejection.py` now checks 211 deterministic prefixes and three explicit
+deferred-context reducers without crashes or sanitizer findings.
+
+Final-binary raw measurements are under `$RALPH_ARTIFACT_DIR/pa5/loop13/`: the
+`final-perf-*` directories plus isolated class/parameter repeats. See
+`loop13-evidence.md` for frozen hashes, host tables, costs and limitations.
+The success-only graph sweep traverses 181 fixture trees plus 32 new portable
+families under ordinary and sanitized builds; all 188 fixture invocations,
+including expected grammar failures, were also checked under ASan/UBSan.

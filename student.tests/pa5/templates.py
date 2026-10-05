@@ -45,6 +45,15 @@ cases['declaration_preference']='template<class value> struct box {box(); box(in
 observations={}; failures=[]
 with tempfile.TemporaryDirectory() as d:
  d=Path(d)
+ # The integration includes a standard dependent conversion rejected by the
+ # reference (reference-notes.md). Qualify it independently, not by weakening
+ # the exact comparisons for all reference-supported families below.
+ integration=R/'student.tests/pa5/templates-portable.cpp'
+ for host in ['g++','clang++']:
+  r=subprocess.run([host,'-std=c++11','-fsyntax-only',integration],capture_output=True)
+  if r.returncode: failures.append(('integration',host,r.stderr.decode()))
+ r=subprocess.run([T,'--emit-ast','-o',d/'integration.ast',integration],capture_output=True)
+ if r.returncode: failures.append(('integration','student',r.stderr.decode()))
  for name,text in cases.items():
   source=d/(name+'.cpp');source.write_text(text)
   row={};observations[name]=row
