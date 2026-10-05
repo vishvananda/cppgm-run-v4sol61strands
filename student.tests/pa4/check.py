@@ -95,6 +95,13 @@ portable(source,'done '*20000)
 # Includes without once replay language processing, not copied immutable bytes.
 assert records(invoke('#include "h"\n#include "h"\n',companions={'h':'2\n'}))==['literal 2 int 02000000']*2
 
+# Nested arguments use indexed spans and an explicit task stack. Depth is not
+# a C++ recursion budget; fixed telemetry bounds catch rescanning descendants.
+for count in (1000,10000,100000):
+    source='#define F(x) x\n'+'F('*count+'done'+')'*count+'\n'
+    assert records(invoke(source))==['identifier done']
+    if count<=10000: portable(source,'done')
+
 # Random independent portable DAG expansion, not reference fixture answers.
 rng = random.Random(412)
 defs = []; values = []

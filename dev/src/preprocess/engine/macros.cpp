@@ -1,6 +1,7 @@
 #include "preprocess/engine/preprocessor.h"
 #include <algorithm>
 #include <stdexcept>
+#include <limits>
 
 namespace cppgm {
 namespace {
@@ -131,6 +132,14 @@ void MacroEngine::define(const std::vector<PPItem>& v) {
         if (paste(r.item)) require(j && j+1<m.replacement.size(), "## at replacement edge");
         if (m.function && hash(r.item)) require(j+1<m.replacement.size() && m.replacement[j+1].parameter>=0, "# must precede parameter");
     }
+    std::vector<bool> prescan(m.parameters.size(),false);
+    for(std::size_t j=0;j<m.replacement.size();++j) {
+        const auto& r=m.replacement[j];
+        if(r.parameter<0 || (j && hash(m.replacement[j-1].item))) continue;
+        const bool comma_extension=m.variadic && std::size_t(r.parameter)+1==m.parameters.size() && j>1 && paste(m.replacement[j-1].item) && punctuation(m.replacement[j-2].item,",");
+        if(comma_extension || ((j==0 || !paste(m.replacement[j-1].item)) && (j+1==m.replacement.size() || !paste(m.replacement[j+1].item)))) prescan[r.parameter]=true;
+    }
+    for(std::size_t j=0;j<prescan.size();++j) if(prescan[j]) m.prescan_parameters.push_back(j);
     if (defined(m.name)) {
         const auto& old = definitions_[bindings_[m.name]-1];
         bool same = old.function == m.function && old.variadic == m.variadic && old.parameters == m.parameters && old.replacement.size()==m.replacement.size();
@@ -152,9 +161,53 @@ void MacroEngine::undefine(const std::vector<PPItem>& v) {
         definitions_[slot]=Macro(); free_definitions_.push_back(slot); bindings_[id]=0;
     }
 }
-void MacroEngine::substitute(const Macro& m, const PPItem& head, std::uint32_t replacement_paint, const std::vector<std::vector<PPItem>>& args, std::vector<PPItem>& out, const Builtin& builtin) {
-    std::vector<std::vector<PPItem>> expanded(args.size());
-    std::vector<bool> ready(args.size(),false);
+// Delimiter links are built exactly once per retained/generated sequence.
+// Nested invocations use O(argument count) views, never scan or copy their
+// descendants. A sequence lives only while an argument/task/chunk references it.
+struct MacroEngine::Sequence {
+    struct Link { std::size_t close, comma; };
+    std::vector<PPItem> items;
+    std::vector<Link> links;
+};
+std::shared_ptr<const MacroEngine::Sequence> MacroEngine::sequence(std::vector<PPItem> items) {
+    std::shared_ptr<Sequence> result=std::make_shared<Sequence>();
+    result->items=std::move(items);
+    const auto absent=std::numeric_limits<std::size_t>::max();
+    result->links.resize(result->items.size(),{absent,absent});
+    struct Open {std::size_t index, separator;};
+    std::vector<Open> stack;
+    for(std::size_t i=0;i<result->items.size();++i) {
+        const auto& p=result->items[i];
+        if(punctuation(p,"(")) stack.push_back({i,i});
+        else if(punctuation(p,",") && !stack.empty()) {
+            result->links[stack.back().separator].comma=i; stack.back().separator=i;
+        } else if(punctuation(p,")") && !stack.empty()) {
+            auto open=stack.back();stack.pop_back();
+            result->links[open.index].close=i; result->links[open.separator].comma=i;
+        }
+    }
+    metrics_.indexed_tokens+=result->items.size();
+    return result;
+}
+std::vector<MacroEngine::Span> MacroEngine::arguments(const Macro& m, const std::shared_ptr<const Sequence>& seq, std::size_t open, std::size_t close) {
+    std::vector<Span> args;
+    std::size_t begin=open+1, separator=seq->links[open].comma;
+    for (;;) {
+        require(separator<=close,"argument delimiter index invariant");
+        args.push_back({seq,begin,separator});
+        if(separator==close) break;
+        begin=separator+1;separator=seq->links[separator].comma;
+    }
+    if(args.size()==1 && args[0].begin==args[0].end && m.parameters.empty()) args.clear();
+    if(m.variadic) {
+        require(args.size()>=m.parameters.size(),"too few variadic arguments");
+        args[m.parameters.size()-1].end=close;
+        args.resize(m.parameters.size());
+    } else require(args.size()==m.parameters.size(),"wrong macro argument count");
+    metrics_.argument_spans+=args.size();
+    return args;
+}
+void MacroEngine::substitute(const Macro& m, const PPItem& head, std::uint32_t replacement_paint, const std::vector<Span>& args, const std::vector<std::vector<PPItem>>& expanded, std::vector<PPItem>& out) {
     const std::uint32_t paint_id = add_paint(replacement_paint,m.name);
     const std::uint32_t parameter_paint = add_paint(head.paint,m.name);
     bool join = false;
@@ -165,10 +218,11 @@ void MacroEngine::substitute(const Macro& m, const PPItem& head, std::uint32_t r
         if (m.function && hash(r.item)) {
             const auto& raw = args[m.replacement[++i].parameter];
             std::string s = "\"";
-            for (std::size_t j=0;j<raw.size();++j) {
-                if (j && raw[j].space) s += ' ';
-                const bool literal = raw[j].token.kind==TokenKind::string || raw[j].token.kind==TokenKind::ud_string || raw[j].token.kind==TokenKind::character || raw[j].token.kind==TokenKind::ud_character;
-                for (char c : raw[j].text) { if (literal && (c=='\\' || c=='\"')) s += '\\'; s += c; }
+            for (std::size_t j=raw.begin;j<raw.end;++j) {
+                const auto& token=raw.sequence->items[j];
+                if (j>raw.begin && token.space) s += ' ';
+                const bool literal = token.token.kind==TokenKind::string || token.token.kind==TokenKind::ud_string || token.token.kind==TokenKind::character || token.token.kind==TokenKind::ud_character;
+                for (char c : token.text) { if (literal && (c=='\\' || c=='\"')) s += '\\'; s += c; }
             }
             s += '"'; part.push_back(synthetic(s,head));
         } else if (r.parameter>=0) {
@@ -176,11 +230,11 @@ void MacroEngine::substitute(const Macro& m, const PPItem& head, std::uint32_t r
             const bool comma_extension = m.variadic && p+1==m.parameters.size() && join && !out.empty() && punctuation(out.back(),",");
             if (comma_extension) {
                 join=false;
-                if(args[p].empty()) {out.pop_back(); continue;}
+                if(args[p].begin==args[p].end) {out.pop_back(); continue;}
             }
             const bool raw = join || (i+1<m.replacement.size() && paste(m.replacement[i+1].item));
-            if (!raw && !ready[p]) { expanded[p] = expand(args[p], builtin); ready[p]=true; }
-            part = raw ? args[p] : expanded[p];
+            if(raw) part.assign(args[p].sequence->items.begin()+args[p].begin,args[p].sequence->items.begin()+args[p].end);
+            else part=expanded[p];
         } else part.push_back(r.item);
         // Empty arguments adjacent to ## are explicit placemarkers.
         if (part.empty() && (join || (i+1<m.replacement.size() && paste(m.replacement[i+1].item)))) {
@@ -218,68 +272,129 @@ void MacroEngine::substitute(const Macro& m, const PPItem& head, std::uint32_t r
     out.erase(std::remove_if(out.begin(),out.end(),[](const PPItem& p){ return p.text.empty(); }),out.end());
     if (!out.empty()) out.front().space=head.space;
 }
-bool MacroEngine::next(PPItem& result, std::vector<PPItem>& pending, const Pull& source, const Builtin& builtin) {
-    auto pull = [&](PPItem& p) {
-        if (!pending.empty()) { p=std::move(pending.back()); pending.pop_back(); return true; }
-        return source(p);
+
+struct MacroEngine::Rescan::State {
+    struct Invocation {
+        std::uint32_t macro, replacement_paint;
+        PPItem head;
+        std::vector<Span> raw;
+        std::vector<std::vector<PPItem>> expanded;
+        std::size_t next_parameter=0, current_parameter=0;
     };
-    PPItem p;
-    while (pull(p)) {
-        ++metrics_.expanded;
-        if (p.token.kind!=TokenKind::identifier || p.blocked) { result=std::move(p); return true; }
-        require(p.token.identifier != va_, "__VA_ARGS__ outside replacement list");
-        ++metrics_.lookups;
-        if (builtin && builtin(p)) { result=std::move(p); return true; }
-        const IdentifierId id = p.token.identifier;
-        if (!defined(id)) { result=std::move(p); return true; }
-        const Macro& m = definitions_[bindings_[id]-1];
-        std::vector<std::vector<PPItem>> args;
-        PPItem invocation=p;
-        if (m.function) {
-            PPItem open;
-            if (!pull(open)) { result=std::move(p); return true; }
-            if (!punctuation(open,"(")) { pending.push_back(std::move(open)); result=std::move(p); return true; }
-            if (painted(p.paint,id)) { pending.push_back(std::move(open)); p.blocked=true; result=std::move(p); return true; }
-            args.emplace_back(); std::size_t depth=0; PPItem t;
-            for (;;) {
-                require(pull(t), "unterminated macro invocation");
-                if (!depth && punctuation(t,")")) { invocation.paint=intersect_paint(p.paint,t.paint); break; }
-                if (!depth && punctuation(t,",")) { args.emplace_back(); continue; }
-                if (punctuation(t,"(")) ++depth;
-                if (punctuation(t,")")) --depth;
-                ++metrics_.argument_tokens; args.back().push_back(std::move(t));
+    struct Frame {
+        std::vector<Span> chunks;
+        std::vector<PPItem> output;
+        std::unique_ptr<Invocation> invocation;
+    };
+    std::vector<Frame> frames;
+    State() {frames.emplace_back();}
+};
+MacroEngine::Rescan::Rescan() : state_(new State()) {}
+MacroEngine::Rescan::~Rescan() {}
+bool MacroEngine::next(PPItem& result, Rescan& rescan, const Pull& source, const Builtin& builtin) {
+    auto& frames=rescan.state_->frames;
+    using Invocation=Rescan::State::Invocation;
+    for (;;) {
+        auto& frame=frames.back();
+        if(frame.invocation) {
+            auto& job=*frame.invocation;
+            const Macro& macro=definitions_[job.macro];
+            if(job.next_parameter<macro.prescan_parameters.size()) {
+                std::size_t parameter=macro.prescan_parameters[job.next_parameter++];
+                job.current_parameter=parameter;
+                Span span=job.raw[parameter];
+                frames.emplace_back(); frames.back().chunks.push_back(std::move(span));
+                metrics_.max_tasks=std::max(metrics_.max_tasks,frames.size());
+                continue;
             }
-            if (args.size()==1 && args[0].empty() && m.parameters.empty()) args.clear();
-            if (m.variadic) {
-                require(args.size()>=m.parameters.size(), "too few variadic arguments");
-                std::size_t fixed=m.parameters.size()-1;
-                for (std::size_t j=fixed+1;j<args.size();++j) {
-                    PPItem comma=synthetic(",",p); comma.space=false; args[fixed].push_back(std::move(comma));
-                    args[fixed].insert(args[fixed].end(),std::make_move_iterator(args[j].begin()),std::make_move_iterator(args[j].end()));
-                }
-                args.resize(m.parameters.size());
-            } else require(args.size()==m.parameters.size(), "wrong macro argument count");
+            std::vector<PPItem> replacement;
+            substitute(macro,job.head,job.replacement_paint,job.raw,job.expanded,replacement);
+            frame.invocation.reset();
+            if(!replacement.empty()) {
+                auto seq=sequence(std::move(replacement));
+                metrics_.max_pending=std::max(metrics_.max_pending,seq->items.size());
+                frame.chunks.push_back({seq,0,seq->items.size()});
+            }
+            continue;
         }
-        if (!m.function && painted(p.paint,id)) { p.blocked=true; result=std::move(p); return true; }
+        std::shared_ptr<const Sequence> pulled_sequence;
+        std::size_t pulled_index=0;
+        auto pull=[&](PPItem& p) {
+            while(!frame.chunks.empty() && frame.chunks.back().begin==frame.chunks.back().end) frame.chunks.pop_back();
+            if(!frame.chunks.empty()) {
+                auto& chunk=frame.chunks.back();pulled_sequence=chunk.sequence;pulled_index=chunk.begin;
+                p=chunk.sequence->items[chunk.begin++]; return true;
+            }
+            pulled_sequence.reset();
+            return frames.size()==1 && source(p);
+        };
+        auto unread=[&](PPItem p) {
+            if(pulled_sequence && !frame.chunks.empty() && frame.chunks.back().sequence==pulled_sequence && frame.chunks.back().begin==pulled_index+1) --frame.chunks.back().begin;
+            else {std::vector<PPItem> v;v.push_back(std::move(p));auto seq=sequence(std::move(v));frame.chunks.push_back({seq,0,1});}
+        };
+        auto emit=[&](PPItem p) {if(frames.size()==1) {result=std::move(p);return true;}frame.output.push_back(std::move(p));return false;};
+        PPItem p;
+        if(!pull(p)) {
+            if(frames.size()==1) return false;
+            auto output=std::move(frame.output);frames.pop_back();
+            auto& parent=*frames.back().invocation;
+            parent.expanded[parent.current_parameter]=std::move(output);
+            continue;
+        }
+        ++metrics_.expanded;
+        if(p.token.kind!=TokenKind::identifier || p.blocked) {if(emit(std::move(p)))return true;continue;}
+        require(p.token.identifier!=va_,"__VA_ARGS__ outside replacement list");
+        ++metrics_.lookups;
+        if(builtin && builtin(p)) {if(emit(std::move(p)))return true;continue;}
+        IdentifierId id=p.token.identifier;
+        if(!defined(id)) {if(emit(std::move(p)))return true;continue;}
+        const std::uint32_t macro_index=bindings_[id]-1;
+        const Macro& macro=definitions_[macro_index];
+        std::unique_ptr<Invocation> job(new Invocation());
+        job->macro=macro_index; job->head=p;job->replacement_paint=p.paint;
+        if(macro.function) {
+            PPItem open;
+            if(!pull(open)) {if(emit(std::move(p)))return true;continue;}
+            if(!punctuation(open,"(") || painted(p.paint,id)) {
+                if(punctuation(open,"(")) p.blocked=true;
+                unread(std::move(open));if(emit(std::move(p)))return true;continue;
+            }
+            std::shared_ptr<const Sequence> seq;
+            std::size_t start=0,close=0;
+            if(pulled_sequence && !frame.chunks.empty() && frame.chunks.back().sequence==pulled_sequence && pulled_sequence->links[pulled_index].close<frame.chunks.back().end) {
+                seq=pulled_sequence;start=pulled_index;close=seq->links[start].close;
+                frame.chunks.back().begin=close+1;
+            } else {
+                // Cross-chunk/source invocation: capture once, then all nested
+                // prescans use indexed spans over this one compact sequence.
+                std::vector<PPItem> raw;raw.push_back(std::move(open));
+                std::size_t depth=0; PPItem t;
+                for (;;) {
+                    require(pull(t),"unterminated macro invocation");
+                    bool end=!depth && punctuation(t,")");
+                    if(!end) {if(punctuation(t,"("))++depth;else if(punctuation(t,")"))--depth;++metrics_.argument_tokens;}
+                    raw.push_back(std::move(t)); if(end)break;
+                }
+                seq=sequence(std::move(raw));close=seq->items.size()-1;
+            }
+            job->replacement_paint=intersect_paint(p.paint,seq->items[close].paint);
+            job->raw=arguments(macro,seq,start,close);
+        } else if(painted(p.paint,id)) {p.blocked=true;if(emit(std::move(p)))return true;continue;}
         ++metrics_.invocations;
-        std::vector<PPItem> replacement;
-        substitute(m,p,invocation.paint,args,replacement,builtin);
-        for (auto i=replacement.rbegin();i!=replacement.rend();++i) pending.push_back(std::move(*i));
-        metrics_.max_pending=std::max(metrics_.max_pending,pending.size());
+        job->expanded.resize(job->raw.size());
+        frame.invocation=std::move(job);
     }
-    return false;
 }
 std::vector<PPItem> MacroEngine::expand_owned(std::vector<PPItem> input, const Builtin& builtin) {
-    std::size_t pos=0; std::vector<PPItem> pending, out; PPItem p;
-    out.reserve(input.size());
-    Pull pull=[&](PPItem& t){ if(pos==input.size()) return false; t=std::move(input[pos++]); return true; };
-    while (next(p,pending,pull,builtin)) out.push_back(std::move(p));
+    Rescan rescan;
+    auto seq=sequence(std::move(input));
+    rescan.state_->frames[0].chunks.push_back({seq,0,seq->items.size()});
+    std::vector<PPItem> out; out.reserve(seq->items.size()); PPItem p;
+    Pull empty=[](PPItem&){return false;};
+    while(next(p,rescan,empty,builtin)) out.push_back(std::move(p));
     return out;
 }
 std::vector<PPItem> MacroEngine::expand(const std::vector<PPItem>& input, const Builtin& builtin) {
-    std::size_t pos=0; std::vector<PPItem> pending, out; PPItem p;
-    Pull pull=[&](PPItem& t){ if(pos==input.size()) return false; t=input[pos++]; return true; };
-    while (next(p,pending,pull,builtin)) out.push_back(std::move(p));
-    return out;
+    return expand_owned(input,builtin);
 }
 }

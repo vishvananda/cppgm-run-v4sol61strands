@@ -25,7 +25,10 @@ Last reviewed commit: d257e04fb48b42db12267c2e438ac18dc7dc5e89
 Implemented pull-source adapter, macros/paint/paste/prescan, conditionals,
 inclusion, locations/predefines, pragmas and per-primary reset. PA4 105/105,
 PA1–3 100/100, file audit 36 files; explicit personal portable/30k-chain controls
-pass. Remaining: repeated performance controls, sanitizer/architecture checks,
+pass. Nested argument audit found recursive O(depth²) copies and an 8k-depth crash.
+Replaced with once-indexed delimiters, shared argument spans and explicit task
+stack: 100k depth passes, 400k indexed tokens, 100k spans, 109 MiB, 0.21s.
+Remaining: repeated performance controls, sanitizer/architecture checks,
 then revalidate and record independent questions.
 
 ## Performance evidence

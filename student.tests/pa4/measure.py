@@ -30,7 +30,7 @@ if a.against:
     variants['before_cursor']=[before/'cursor']
     variants['before_preproc']=[before/'preproc','-o',A/'before_dump']
 inputs={}
-for name in ['text','lookup','arguments','pastes','deep','conditional','includes','aliases']:
+for name in ['text','lookup','arguments','pastes','deep','conditional','includes','aliases','nested']:
     path=A/(name+'.cc')
     if name=='text': text='done\n'*300000; expected=300000
     elif name=='lookup':
@@ -43,6 +43,8 @@ for name in ['text','lookup','arguments','pastes','deep','conditional','includes
         text='#define F0() done\n'+''.join(f'#define F{i}() F{i-1}()\n' for i in range(1,30001))+'#define REP(x) x x x x\nREP(F30000())\n';expected=4
     elif name=='conditional':
         text='#define FLAG 7\n'+ '#if defined(FLAG) && FLAG==7 && (1 || 1/0)\ndone\n#else\n#error fail\n#endif\n'*85000;expected=85000
+    elif name=='nested':
+        text='#define F(x) x\n'+'F('*30000+'done'+')'*30000+'\n';expected=1
     elif name=='aliases':
         text='#define A B\n#define B C\n#define C done\n'+'A\n'*300000;expected=300000
     else:

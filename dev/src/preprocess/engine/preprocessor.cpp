@@ -63,7 +63,7 @@ struct Preprocessor::Impl {
     std::vector<File*> files;
     std::vector<Conditional> conditions;
     std::unordered_set<Identity,IdentityHash> once;
-    std::vector<PPItem> pending;
+    MacroEngine::Rescan pending;
     std::vector<PPItem> directive;
     bool directive_ready=false;
     IdentifierId file_id,line_id,pragma_id,defined_id;
