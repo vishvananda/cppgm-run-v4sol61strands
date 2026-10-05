@@ -35,3 +35,10 @@ No compiler executable/backend/LowIR is emitted at PA5. Generated-program
 runtime/text/object size and the mandatory PA33/34 ≤1.25x GCC executable
 instruction gate are future-stage checks, not waived. Compiler latency, RSS,
 compiler binary size and AST view size are reported separately.
+
+`coverage.py` separately qualifies seven major remaining namespace/class/enum/
+template/dependent/special-member capability probes with GCC, Clang and the
+reference. It records current student failures; those observations are neither
+passing controls nor a substitute for implementing the remaining PA5 grammar.
+`reference-notes.md` documents two reduced personal oracle disagreements with
+C++11 rule proofs and the unchanged bundle revision. No required output changed.

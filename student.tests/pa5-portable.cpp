@@ -46,3 +46,5 @@ word scope(word x) {
 static_assert(NUMBER == 28, "owned" " message");
 const char* text = "long enough borrowed " "string to cross inline capacity";
 int literals() { return NUMBER + '\n'; }
+long double operator""_scale(long double);
+void dependency(int x [[carries_dependency]]);
