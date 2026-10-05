@@ -55,7 +55,20 @@ NodeId SyntaxParser::lambda() {
     tree_.append(result,compound()); leave(); return result;
 }
 void SyntaxParser::attributes() {
-    while (at(SimpleKind::OP_LSQUARE) && at(SimpleKind::OP_LSQUARE,1)) {
+    while (true) {
+        // Attributes/alignment are omitted from the PA5 view, but their balanced
+        // source extent is consumed once. No owning spelling or grammar replay.
+        if (at(SimpleKind::KW_ALIGNAS) || (peek().kind==PostKind::identifier && peek().identifier==attribute_id_)) {
+            take(); require(SimpleKind::OP_LPAREN); unsigned depth=1;
+            while (depth) {
+                if (peek().kind==PostKind::eof) error("attribute closing parenthesis");
+                if (at(SimpleKind::OP_LPAREN)) ++depth;
+                if (at(SimpleKind::OP_RPAREN)) --depth;
+                take();
+            }
+            continue;
+        }
+        if (!at(SimpleKind::OP_LSQUARE) || !at(SimpleKind::OP_LSQUARE,1)) break;
         take(); take();
         std::vector<SimpleKind> close;
         while (true) {

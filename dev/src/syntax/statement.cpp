@@ -58,8 +58,9 @@ NodeId SyntaxParser::for_statement() {
     if (!at(SimpleKind::OP_RPAREN)) { NodeId i=tree_.node(SyntaxKind::Iteration); tree_.append(i,expression()); tree_.append(result,i); }
     require(SimpleKind::OP_RPAREN); tree_.append(result,scoped_statement()); leave(); return result;
 }
-NodeId SyntaxParser::try_statement() {
-    NodeId result=tree_.node(SyntaxKind::Try); tree_.append(result,compound());
+NodeId SyntaxParser::try_statement(NodeId result) {
+    if (!result) result=tree_.node(SyntaxKind::Try);
+    tree_.append(result,compound());
     if (!at(SimpleKind::KW_CATCH)) error("catch");
     while (eat(SimpleKind::KW_CATCH)) {
         enter(); NodeId handler=tree_.node(SyntaxKind::Handler); require(SimpleKind::OP_LPAREN);

@@ -73,9 +73,19 @@ std::string SyntaxTree::compact(NodeId id, const IdentifierTable& ids) const {
             for (auto e=n.first;e;e=edges[e].next) list.push_back(edges[e].child);
             return list;
         };
-        if (n.operator_literal || n.operator_conversion) {
+        if (n.kind==SyntaxKind::SpecialDeclaration || n.kind==SyntaxKind::SpecialDefinition) {
+            NodeId d=child(i.id);
+            if (nodes[d].kind==SyntaxKind::DeclSpecifiers || nodes[d].kind==SyntaxKind::MemberSpecifiers) {
+                auto e=edges[n.first].next; d=e ? edges[e].child : 0;
+            }
+            for (auto e=nodes[d].first;e;e=edges[e].next)
+                if (nodes[edges[e].child].kind==SyntaxKind::Identifier) { work.push_back({edges[e].child,nullptr}); break; }
+        } else if (n.operator_literal || n.operator_conversion) {
             out+=n.operator_literal ? "operator\"\"" : "operator";
             work.push_back({child(i.id),nullptr});
+            if (n.operator_conversion && n.global_scope) out+=' ';
+        } else if (n.destructor) {
+            out+='~'; auto spelling=ids.spelling(n.name); out.append(spelling.data,spelling.size);
         } else if (n.is_operator) {
             out+="operator"; out+=token_spelling(n.token);
             if (n.token==SimpleKind::OP_LPAREN) out+=')';
@@ -105,7 +115,7 @@ std::string SyntaxTree::compact(NodeId id, const IdentifierTable& ids) const {
             if (n.payload==SyntaxPayload::identifier) {
                 if (n.global_scope) out+="::";
                 auto spelling=ids.spelling(n.name); out.append(spelling.data,spelling.size);
-                if (n.kind==SyntaxKind::IdExpression || n.kind==SyntaxKind::Identifier || n.kind==SyntaxKind::TypeName || n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::Pointer || n.kind==SyntaxKind::Target) {
+                if (n.kind==SyntaxKind::IdExpression || n.kind==SyntaxKind::Identifier || n.kind==SyntaxKind::TypeName || n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::Pointer || n.kind==SyntaxKind::Target || n.kind==SyntaxKind::BaseName || n.kind==SyntaxKind::MemInitializerId) {
                     if (n.member_pointer) work.push_back({0,"::*"});
                     auto c=children();
                     for (std::size_t j=c.size();j>0;--j) { work.push_back({c[j-1],nullptr}); work.push_back({0,"::"}); }
@@ -123,12 +133,13 @@ void SyntaxTree::dump(std::ostream& out, const IdentifierTable& ids, NodeId root
         const auto& n=nodes[id];
         for (unsigned i=0;i<depth;++i) out << "  ";
         out << kind_name(n.kind);
+        if (n.kind==SyntaxKind::SpecialDeclaration || n.kind==SyntaxKind::SpecialDefinition) out << ' ' << compact(id,ids);
         if (n.is_decltype) out << ' ' << compact(id,ids);
-        if (n.is_operator || n.member_pointer || n.operator_literal || n.operator_conversion) out << ' ' << compact(id,ids);
+        if (n.destructor || n.is_operator || n.member_pointer || n.operator_literal || n.operator_conversion) out << ' ' << compact(id,ids);
         else if (n.payload==SyntaxPayload::identifier) {
-            if (n.kind==SyntaxKind::DeclSpecifier && !n.first && !n.global_scope) out << " TT_IDENTIFIER:";
+            if ((n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::VirtSpecifier) && !n.first && !n.global_scope) out << " TT_IDENTIFIER:";
             else out << ' ';
-            if (n.first && (n.kind==SyntaxKind::IdExpression || n.kind==SyntaxKind::Identifier || n.kind==SyntaxKind::TypeName || n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::Target)) out << compact(id,ids);
+            if (n.first && (n.kind==SyntaxKind::IdExpression || n.kind==SyntaxKind::Identifier || n.kind==SyntaxKind::TypeName || n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::Target || n.kind==SyntaxKind::BaseName || n.kind==SyntaxKind::MemInitializerId)) out << compact(id,ids);
             else {
                 if (n.global_scope) out << "::";
                 auto spelling=ids.spelling(n.name); out.write(spelling.data,spelling.size);
@@ -155,7 +166,7 @@ void SyntaxTree::dump(std::ostream& out, const IdentifierTable& ids, NodeId root
     };
     auto visible_edges=[&](NodeId n) {
         const auto& node=nodes[n];
-        if (node.kind==SyntaxKind::IdExpression || node.kind==SyntaxKind::Identifier || node.kind==SyntaxKind::Target || node.kind==SyntaxKind::LambdaIntroducer ||
+        if (node.kind==SyntaxKind::IdExpression || node.kind==SyntaxKind::Identifier || node.kind==SyntaxKind::Target || node.kind==SyntaxKind::BaseName || node.kind==SyntaxKind::MemInitializerId || node.kind==SyntaxKind::LambdaIntroducer ||
             node.member_pointer || (node.payload==SyntaxPayload::identifier && node.kind==SyntaxKind::DeclSpecifier) ||
             (node.kind==SyntaxKind::FunctionQualifier && node.token==SimpleKind::KW_THROW)) return std::uint32_t(0);
         return node.first;

@@ -99,3 +99,25 @@ improvement claimed. Earlier measurements in `pa5/certified` remain historical.
   hosted-header capability/representation costs beyond these supported inputs.
   Earlier PA evidence remains preserved. This is an incomplete implementation
   handoff to Ralph, not whole-stage certification or permission to advance.
+
+## Loop 11 active ownership
+- Entry HEAD: 10fc90a7e0d9c1a312bd6a45113294b7501fe031; 77/188,
+  111 failures. Stage/review markers above are preserved.
+- Owner `syntax/classes`: class heads/bases, member declarations, special
+  members, member function scopes and complete-class deferred bodies. Data flow
+  remains the streaming cursor and indexed TU graph; only complete-class regions
+  are retained as compact tokens and parsed once after member declarations.
+  No source/grammar replay, TU scans or string lookup keys. Expected work/storage
+  O(tokens + nodes + required scope/base visits); validate required ASTs,
+  portable GCC/Clang cases, retained graph facts, repeated PMU/latency/RSS controls.
+- Separate unfinished owner `syntax/templates`: template parameters/arguments,
+  angle splitting and dependent environments. No waiver of inherited controls,
+  architecture review or the later PA33/34 executable instruction gate.
+- First class increment: required 77 -> 115/188, no coverage edits. Class/member
+  environment + base edges, special/ordinary function scope qualification, access,
+  bit-fields, specifiers/attributes, declarator common-prefix fixes completed.
+  Compact complete-class regions defer bodies/defaults/noexcept/member initializers
+  until all nested member declarations exist; each region's grammar runs once.
+  Detached region queue preserves nested local-class completion without replay.
+  Explicit class portable integration + 22 families/6 rejections pass; reference
+  inherited-type and qualified-parameter scope gaps are separately retained.

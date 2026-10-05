@@ -21,6 +21,7 @@ struct SyntaxScope {
     SyntaxScopeId parent = 0, nearest_namespace = 0, namespace_parent = 0;
     unsigned namespace_depth = 0;
     std::unordered_map<IdentifierId,SyntaxBinding> names;
+    std::vector<SyntaxScopeId> bases;
     std::vector<SyntaxScopeId> imports;
     std::unordered_set<SyntaxScopeId> imported;
     std::uint64_t visited = 0;
@@ -43,7 +44,7 @@ struct SyntaxScope {
  X(Initializer,"initializer") X(ParenInitializer,"paren-initializer") \
  X(BracedInit,"braced-init-list") X(TypeId,"type-id") X(TypeSpecifiers,"type-specifier-seq") \
  X(Decltype,"decltype-specifier") X(TypeSpecifier,"type-specifier") X(TypeName,"type-name") \
- X(ClassForward,"class-forward-declaration") X(ClassKey,"class-key") X(Linkage,"linkage-specification") X(Alias,"alias-declaration") X(StaticAssert,"static-assert-declaration") X(Message,"message") \
+ X(Class,"class-specifier") X(BaseClause,"base-clause") X(Base,"base-specifier") X(BaseName,"base-name") X(Access,"access-specifier") X(Virtual,"virtual") X(VirtSpecifier,"virt-specifier") X(MemberSpecifiers,"member-specifiers") X(MemberSpecifier,"specifier") X(SpecialDeclaration,"special-member-declaration") X(SpecialDefinition,"special-member-definition") X(SpecialInitializer,"special-initializer") X(CtorInitializer,"ctor-initializer") X(MemInitializer,"mem-initializer") X(MemInitializerId,"mem-initializer-id") X(BitField,"bit-field-declaration") X(BitDeclarator,"bit-field-declarator") X(ClassForward,"class-forward-declaration") X(ClassKey,"class-key") X(Linkage,"linkage-specification") X(Alias,"alias-declaration") X(StaticAssert,"static-assert-declaration") X(Message,"message") \
  X(Compound,"compound-statement") X(ExpressionStatement,"expression-statement") \
  X(Return,"return-statement") X(Break,"break-statement") X(Continue,"continue-statement") \
  X(Goto,"goto-statement") X(Label,"labeled-statement") X(Case,"case-statement") \
@@ -79,8 +80,8 @@ struct SyntaxNode {
     SimpleKind token = SimpleKind::KW_AUTO;
     IdentifierId name = 0;
     std::uint32_t first = 0, last = 0, offset = 0, length = 0, literal = 0;
-    bool is_decltype = false, is_operator = false, operator_array = false, member_pointer = false, operator_literal = false, operator_conversion = false, global_scope = false, has_parentheses = false;
-    SyntaxScopeId scope = 0, resolved_scope = 0;
+    bool destructor = false, complete_definition = false, is_decltype = false, is_operator = false, operator_array = false, member_pointer = false, operator_literal = false, operator_conversion = false, global_scope = false, has_parentheses = false;
+    SyntaxScopeId scope = 0, resolved_scope = 0, qualifier_scope = 0;
     SyntaxCategory category = SyntaxCategory::unknown;
     IdentifierId terminal_name = 0;
     SourceRange range = {0,0};

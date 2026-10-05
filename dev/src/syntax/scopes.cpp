@@ -48,6 +48,17 @@ SyntaxBinding SyntaxParser::lookup(IdentifierId id, SyntaxScopeId scope, bool pa
     for (;scope;scope=parents ? tree_.scopes[scope].parent : 0) {
         auto direct=tree_.scopes[scope].names.find(id);
         if (direct!=tree_.scopes[scope].names.end() && usable(direct->second)) return selected(direct->second);
+        // Base lookup is a class-local step, unlike using-directive nominations.
+        // Generation stamps bound diamond/cyclic syntax visits to once/query.
+        std::vector<SyntaxScopeId> base_work(tree_.scopes[scope].bases);
+        while (!base_work.empty()) {
+            auto next=base_work.back(); base_work.pop_back(); auto& env=tree_.scopes[next];
+            if (env.visited==serial) continue;
+            env.visited=serial;
+            auto found=env.names.find(id);
+            if (found!=env.names.end() && usable(found->second)) return selected(found->second);
+            for (auto base:env.bases) base_work.push_back(base);
+        }
         std::vector<SyntaxScopeId> work;
         for (auto imported:tree_.scopes[scope].imports) work.push_back(imported);
         while (!work.empty()) {

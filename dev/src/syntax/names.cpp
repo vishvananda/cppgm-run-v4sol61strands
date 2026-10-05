@@ -7,7 +7,7 @@ NodeId SyntaxParser::qualified_component(SyntaxKind kind) {
         if (peek().kind==PostKind::array) {
             auto empty=take();
             const auto& literal=tree_.literals[tree_.nodes[empty.literal_node].literal];
-            if (literal.elements!=1 || literal.width!=1 || empty.source!="\"\"") error("empty literal operator string");
+            if (literal.elements!=1 || literal.width!=1) error("empty literal operator string");
             result=empty.literal_node;
             tree_.nodes[result].kind=kind; tree_.nodes[result].payload=SyntaxPayload::none;
             tree_.nodes[result].operator_literal=true;
@@ -35,6 +35,8 @@ NodeId SyntaxParser::qualified_component(SyntaxKind kind) {
                 require(SimpleKind::OP_RSQUARE); tree_.nodes[result].operator_array=true;
             }
         }
+    } else if (eat(SimpleKind::OP_COMPL)) {
+        result=name(kind); tree_.nodes[result].destructor=true;
     } else result=name(kind);
     return result;
 }
@@ -61,7 +63,14 @@ NodeId SyntaxParser::qualified_raw(SyntaxKind kind, bool namespace_only) {
         if (!qualifier) break;
         take(); scope=binding.target; parents=false;
         if (eat(SimpleKind::OP_STAR)) { node.kind=SyntaxKind::Pointer; node.member_pointer=true; break; }
-        component=qualified_component(SyntaxKind::Identifier); tree_.append(result,component);
+        tree_.nodes[result].qualifier_scope=scope;
+        // A qualified declarator's conversion type is looked up in its class.
+        // Temporarily nominate that indexed environment, not the rendered prefix.
+        if (scope) enter(scope);
+        component=qualified_component(SyntaxKind::Identifier);
+        if (scope) leave();
+        if (tree_.nodes[component].operator_conversion) tree_.nodes[component].global_scope=true;
+        tree_.append(result,component);
     }
     return result;
 }

@@ -8,12 +8,13 @@ class SyntaxParser {
     PostCursor& cursor_;
     IdentifierTable& ids_;
     SyntaxTree& tree_;
-    struct InputToken : PostToken { NodeId literal_node = 0, name_node = 0; };
+    struct InputToken : PostToken { NodeId literal_node = 0, name_node = 0; bool counted = false; };
     std::deque<InputToken> lookahead_;
     using Category = SyntaxCategory;
     std::vector<Category> hints_;
     std::vector<SyntaxScopeId> active_;
     std::uint64_t lookup_serial_ = 0;
+    IdentifierId final_id_, override_id_, attribute_id_;
     SyntaxScopeId create_scope(SyntaxScopeId, bool namespace_scope=false);
     SyntaxScopeId common_namespace(SyntaxScopeId, SyntaxScopeId) const;
     void import_scope(SyntaxScopeId, SyntaxScopeId);
@@ -25,6 +26,31 @@ class SyntaxParser {
     NodeId namespace_declaration();
     NodeId using_declaration();
     NodeId enum_specifier();
+    NodeId class_specifier();
+    NodeId class_name(SyntaxKind);
+    NodeId special_member(NodeId specs=0, NodeId parsed_name=0);
+    NodeId function_body(NodeId, bool ready=false);
+    NodeId ctor_initializer();
+    bool special_start();
+    struct ClassContext { IdentifierId name; SyntaxScopeId scope; };
+    std::vector<ClassContext> classes_;
+    // The sole retained token representation is for complete-class contexts.
+    // Scalar/array literal bytes already live in the TU literal arena.
+    struct DeferredToken {
+        PostKind kind; SimpleKind simple; IdentifierId identifier;
+        SourceRange range; SourceLocation location; NodeId literal;
+    };
+    enum class DeferredKind : unsigned char { body, equal_initializer, direct_initializer, expression };
+    struct DeferredBody {
+        NodeId owner; SyntaxScopeId scope; DeferredKind kind = DeferredKind::body;
+        std::vector<DeferredToken> tokens;
+    };
+    std::vector<DeferredBody> deferred_;
+    const std::vector<DeferredToken>* deferred_input_ = nullptr;
+    std::size_t deferred_position_ = 0;
+    void defer_body(NodeId);
+    void defer_expression(NodeId, DeferredKind, SimpleKind close);
+    void finish_bodies(std::size_t);
     NodeId qualified_component(SyntaxKind);
     NodeId qualified_raw(SyntaxKind, bool namespace_only=false);
     std::size_t tokens_=0, queries_=0, max_lookahead_=0;
@@ -43,7 +69,7 @@ class SyntaxParser {
     NodeId leaf(SyntaxKind, const PostToken&);
     NodeId raw(SyntaxKind, SimpleKind);
     NodeId name(SyntaxKind);
-    NodeId specs(bool type=false, bool force=false, NodeId result=0, bool has_type=false);
+    NodeId specs(bool type=false, bool force=false, NodeId result=0, bool has_type=false, bool allow_special=false);
     NodeId declarator(bool abstract=false, bool allow_name=true, bool allocation=false);
     NodeId parameters();
     NodeId type_id(bool allocation=false, bool force=false);
@@ -68,12 +94,12 @@ class SyntaxParser {
     NodeId ambiguous_statement();
     NodeId suffixes(NodeId, bool allocation=false);
     NodeId qualified(SyntaxKind, bool namespace_only=false);
-    NodeId try_statement();
+    NodeId try_statement(NodeId result=0);
     IdentifierId declared_name(NodeId) const;
     bool function_declarator(NodeId) const;
 public:
     SyntaxParser(PostCursor& cursor, IdentifierTable& ids, SyntaxTree& tree)
-        : cursor_(cursor), ids_(ids), tree_(tree) { tree_.scopes.emplace_back(); enter(); }
+        : cursor_(cursor), ids_(ids), tree_(tree), final_id_(ids.intern("final")), override_id_(ids.intern("override")), attribute_id_(ids.intern("__attribute__")) { tree_.scopes.emplace_back(); enter(); }
     NodeId parse();
     std::size_t tokens() const { return tokens_; }
     std::size_t queries() const { return queries_; }

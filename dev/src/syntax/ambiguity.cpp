@@ -7,10 +7,19 @@ NodeId SyntaxParser::ambiguous_statement() {
     NodeId spec=specs(); require(SimpleKind::OP_LPAREN);
     NodeId inner=0;
     bool declaration_candidate=false;
-    if (at(SimpleKind::OP_STAR) || at(SimpleKind::OP_AMP) || at(SimpleKind::OP_LAND) ||
+    prepare_name();
+    if ((peek().kind==PostKind::identifier && lookahead_.front().name_node && tree_.nodes[lookahead_.front().name_node].member_pointer) || at(SimpleKind::OP_STAR) || at(SimpleKind::OP_AMP) || at(SimpleKind::OP_LAND) ||
         (peek().kind==PostKind::identifier && at(SimpleKind::OP_RPAREN,1))) {
         inner=declarator(); declaration_candidate=true;
-    } else if (!at(SimpleKind::OP_RPAREN)) inner=expression();
+    } else if (!at(SimpleKind::OP_RPAREN)) {
+        inner=expression(2);
+        while (eat(SimpleKind::OP_COMMA)) {
+            NodeId args=tree_.node(SyntaxKind::Arguments); tree_.append(args,inner);
+            tree_.append(args,expression(2));
+            while (eat(SimpleKind::OP_COMMA)) tree_.append(args,expression(2));
+            inner=args;
+        }
+    }
     require(SimpleKind::OP_RPAREN);
     const bool declaration_tail=at(SimpleKind::OP_SEMICOLON) || at(SimpleKind::OP_COMMA) || at(SimpleKind::OP_ASS) ||
         at(SimpleKind::OP_LBRACE) || at(SimpleKind::OP_LSQUARE) || at(SimpleKind::OP_LPAREN);
@@ -44,7 +53,9 @@ NodeId SyntaxParser::ambiguous_statement() {
         tree_.nodes[inner].kind=type.kind==PostKind::identifier ? SyntaxKind::Arguments : SyntaxKind::ParenArguments;
         tree_.nodes[c].kind=SyntaxKind::IdExpression;
         args=inner;
-    } else { args=tree_.node(type.kind==PostKind::identifier ? SyntaxKind::Arguments : SyntaxKind::ParenArguments); tree_.append(args,inner); }
+    } else if (inner && tree_.nodes[inner].kind==SyntaxKind::Arguments) {
+        args=inner; tree_.nodes[args].kind=type.kind==PostKind::identifier ? SyntaxKind::Arguments : SyntaxKind::ParenArguments;
+    } else { args=tree_.node(type.kind==PostKind::identifier ? SyntaxKind::Arguments : SyntaxKind::ParenArguments); if (inner) tree_.append(args,inner); }
     tree_.append(spec,args);
     NodeId result=tree_.node(SyntaxKind::ExpressionStatement); tree_.append(result,expression_tail(postfix(spec)));
     require(SimpleKind::OP_SEMICOLON); return result;
