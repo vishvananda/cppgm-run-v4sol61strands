@@ -17,4 +17,16 @@ with tempfile.TemporaryDirectory() as directory:
    assert r.returncode in (0,1),(source,end,r.returncode,r.stderr.decode())
    assert b'AddressSanitizer' not in r.stderr and b'runtime error:' not in r.stderr,(source,end,r.stderr.decode())
    count+=1
-print(f'PA5 clean prefix rejection passed: {count} prefixes')
+ # Explicit reduced cases keep deferred-context rejection covered even if a
+ # portable integration changes length and its sampled prefixes move.
+ reducers=[
+  'namespace patterns { template<class value> struct box { box():data{} {} box(value',
+  'namespace patterns { struct box { int f() { return (; } }; }',
+  'namespace patterns { template<class value> struct box { int f(int x=sizeof()); }; }',
+ ]
+ for text in reducers:
+  p=d/'reduced.cpp';p.write_text(text)
+  r=subprocess.run([T,'--emit-ast','-o',d/'ast',p],capture_output=True,timeout=5)
+  assert r.returncode==1,(text,r.returncode,r.stderr.decode())
+  assert b'AddressSanitizer' not in r.stderr and b'runtime error:' not in r.stderr,(text,r.stderr.decode())
+print(f'PA5 clean prefix rejection passed: {count} prefixes + {len(reducers)} deferred-context reducers')

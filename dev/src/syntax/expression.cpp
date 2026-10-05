@@ -105,7 +105,9 @@ NodeId SyntaxParser::unary_atom() {
 NodeId SyntaxParser::primary() {
     if (expected_) return 0;
     if (at(SimpleKind::OP_LSQUARE)) return lambda();
-    if (eat(SimpleKind::KW_TYPENAME)) return qualified(SyntaxKind::IdExpression);
+    if (eat(SimpleKind::KW_TYPENAME)) {
+        NodeId n=qualified(SyntaxKind::IdExpression); tree_.nodes[n].typename_keyword=true; return n;
+    }
     if (eat(SimpleKind::KW_DECLTYPE)) {
         NodeId result=tree_.node(SyntaxKind::IdExpression); tree_.nodes[result].is_decltype=true;
         if (!require(SimpleKind::OP_LPAREN)) return 0;

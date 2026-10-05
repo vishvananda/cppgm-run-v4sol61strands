@@ -218,7 +218,10 @@ void SyntaxParser::finish_bodies(std::size_t first) {
     // Member declarator tails publish class names before complete-class bodies.
     std::stable_partition(regions.begin(),regions.end(),[](const DeferredBody& r) { return r.kind==DeferredKind::member_initializer_tail; });
     for (auto& region:regions) {
-        if (expected_) return;
+        // Always restore the detached parser context, including on rejection.
+        // Returning here would leave deferred_input_ dangling and outer scopes
+        // replaced by the incomplete region's scopes during error unwinding.
+        if (expected_) break;
         active_.clear();
         for (SyntaxScopeId s=region.scope;s;s=tree_.scopes[s].parent) active_.push_back(s);
         std::reverse(active_.begin(),active_.end());
@@ -242,7 +245,7 @@ void SyntaxParser::finish_bodies(std::size_t first) {
                 tree_.append(region.siblings,item);
             }
         } else tree_.append(region.owner,initializer(region.kind==DeferredKind::equal_initializer));
-        if (peek().kind!=PostKind::eof) { error("end of complete-class region"); return; }
+        if (!expected_ && peek().kind!=PostKind::eof) { error("end of complete-class region"); break; }
     }
     deferred_input_=outer_input; deferred_position_=outer_position;
     delimiter_depth_=outer_delimiter; angle_boundaries_=std::move(outer_angles);

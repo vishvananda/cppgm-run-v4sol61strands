@@ -60,7 +60,7 @@ void SyntaxTree::append(NodeId parent, NodeId child) {
     nodes[parent].last=e;
 }
 NodeId SyntaxTree::child(NodeId parent) const { return nodes[parent].first ? edges[nodes[parent].first].child : 0; }
-std::string SyntaxTree::compact(NodeId id, const IdentifierTable& ids) const {
+std::string SyntaxTree::compact(NodeId id, const IdentifierTable& ids, bool omit_root_typename) const {
     // Explicit rendering stack keeps deeply nested expressions off the C++ stack.
     struct Item { NodeId id; const char* text; };
     std::vector<Item> work; work.push_back({id,nullptr}); std::string out;
@@ -97,6 +97,8 @@ std::string SyntaxTree::compact(NodeId id, const IdentifierTable& ids) const {
             auto c=children();
             for (std::size_t j=c.size();j>1;--j) { work.push_back({c[j-1],nullptr}); work.push_back({0,"::"}); }
             out+="decltype("; work.push_back({0,")"}); work.push_back({child(i.id),nullptr});
+        } else if (n.kind==SyntaxKind::Trait) {
+            out+=token_spelling(n.token); out+='('; work.push_back({0,")"}); work.push_back({child(i.id),nullptr});
         } else if (n.kind==SyntaxKind::Sizeof) {
             out+="sizeof("; work.push_back({0,")"}); work.push_back({child(i.id),nullptr});
         } else if (n.kind==SyntaxKind::TemplateArguments) {
@@ -105,9 +107,14 @@ std::string SyntaxTree::compact(NodeId id, const IdentifierTable& ids) const {
         } else if ((n.kind==SyntaxKind::PackExpansion || n.kind==SyntaxKind::PackExpression) && n.first) {
             work.push_back({0,"..."}); work.push_back({child(i.id),nullptr});
         } else if (n.kind==SyntaxKind::FactoredSyntax || n.kind==SyntaxKind::TypeId || n.kind==SyntaxKind::TypeSpecifiers || n.kind==SyntaxKind::AbstractDeclarator) {
-            if (n.typename_keyword) out+="typename ";
+            if (n.typename_keyword && !(omit_root_typename && i.id==id)) out+="typename ";
             auto c=children();
-            for (std::size_t j=c.size();j>0;--j) { work.push_back({c[j-1],nullptr}); if (n.kind==SyntaxKind::TypeSpecifiers && j>1) work.push_back({0," "}); }
+            for (std::size_t j=c.size();j>0;--j) {
+                if (n.kind==SyntaxKind::TypeSpecifiers && nodes[c[j-1]].kind==SyntaxKind::CvQualifier) work.push_back({0," "});
+                work.push_back({c[j-1],nullptr});
+            }
+        } else if (n.kind==SyntaxKind::NestedDeclarator) {
+            out+='('; work.push_back({0,")"}); work.push_back({child(i.id),nullptr});
         } else if (n.kind==SyntaxKind::Parameters) {
             out+='('; work.push_back({0,")"}); auto c=children();
             for (std::size_t j=c.size();j>0;--j) { work.push_back({c[j-1],nullptr}); if (j>1) work.push_back({0,","}); }
@@ -127,6 +134,9 @@ std::string SyntaxTree::compact(NodeId id, const IdentifierTable& ids) const {
         } else if (n.kind==SyntaxKind::Parameter || n.kind==SyntaxKind::DeclSpecifiers || n.kind==SyntaxKind::Declarator) {
             auto c=children();
             for (std::size_t j=c.size();j>0;--j) { work.push_back({c[j-1],nullptr}); if (n.kind==SyntaxKind::DeclSpecifiers && j>1) work.push_back({0," "}); }
+        } else if (n.kind==SyntaxKind::BracedInit) {
+            out+='{'; work.push_back({0,"}"}); auto c=children();
+            for (std::size_t j=c.size();j>0;--j) { work.push_back({c[j-1],nullptr}); if (j>1) work.push_back({0,","}); }
         } else if (n.kind==SyntaxKind::Parenthesized || n.kind==SyntaxKind::Arguments || n.kind==SyntaxKind::ParenArguments || n.kind==SyntaxKind::ParenInitializer || n.kind==SyntaxKind::LambdaIntroducer) {
             out+=n.kind==SyntaxKind::LambdaIntroducer ? "[" : "(";
             work.push_back({0,n.kind==SyntaxKind::LambdaIntroducer ? "]" : ")"});
@@ -153,6 +163,7 @@ std::string SyntaxTree::compact(NodeId id, const IdentifierTable& ids) const {
             if (n.payload==SyntaxPayload::identifier) {
                 if (n.global_scope) out+="::";
                 if (n.template_keyword) out+="template ";
+                if (n.typename_keyword && !(omit_root_typename && i.id==id)) out+="typename ";
                 auto spelling=ids.spelling(n.name); out.append(spelling.data,spelling.size);
                 if (n.kind==SyntaxKind::IdExpression || n.kind==SyntaxKind::Identifier || n.kind==SyntaxKind::TypeName || n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::Pointer || n.kind==SyntaxKind::Target || n.kind==SyntaxKind::BaseName || n.kind==SyntaxKind::MemInitializerId || n.kind==SyntaxKind::Class || n.kind==SyntaxKind::ClassForward) {
                     if (n.member_pointer) work.push_back({0,"::*"});
@@ -184,10 +195,11 @@ void SyntaxTree::dump(std::ostream& out, const IdentifierTable& ids, NodeId root
         if (n.kind==SyntaxKind::SpecialDeclaration || n.kind==SyntaxKind::SpecialDefinition) out << ' ' << compact(id,ids);
         if (n.is_decltype) out << ' ' << compact(id,ids);
         if (n.destructor || n.is_operator || n.member_pointer || n.operator_literal || n.operator_conversion) out << ' ' << compact(id,ids);
+        else if (n.kind==SyntaxKind::TrailingReturn && n.payload==SyntaxPayload::identifier) out << ' ' << compact(child(id),ids);
         else if (n.payload==SyntaxPayload::identifier) {
             if ((n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::VirtSpecifier) && !n.first && !n.global_scope) out << " TT_IDENTIFIER:";
             else out << ' ';
-            if (n.first && (n.kind==SyntaxKind::IdExpression || n.kind==SyntaxKind::Identifier || n.kind==SyntaxKind::TypeName || n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::Target || n.kind==SyntaxKind::BaseName || n.kind==SyntaxKind::MemInitializerId || n.kind==SyntaxKind::Class || n.kind==SyntaxKind::ClassForward)) out << compact(id,ids);
+            if (n.first && (n.kind==SyntaxKind::IdExpression || n.kind==SyntaxKind::Identifier || n.kind==SyntaxKind::TypeName || n.kind==SyntaxKind::DeclSpecifier || n.kind==SyntaxKind::Target || n.kind==SyntaxKind::BaseName || n.kind==SyntaxKind::MemInitializerId || n.kind==SyntaxKind::Class || n.kind==SyntaxKind::ClassForward)) out << compact(id,ids,n.kind==SyntaxKind::IdExpression);
             else {
                 if (n.global_scope) out << "::";
                 auto spelling=ids.spelling(n.name); out.write(spelling.data,spelling.size);

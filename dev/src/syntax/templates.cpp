@@ -17,11 +17,13 @@ bool SyntaxParser::close_angle() {
 NodeId SyntaxParser::template_argument() {
     if (expected_) return 0;
     prepare_name();
-    // A builtin-led conversion with an expression operand is not a function
+    // A type-led conversion with an expression operand is not a function
     // type argument. Factor its bounded prefix using the same category facts
     // as declarator parameter clauses; never speculate or replay the region.
-    if (peek().kind==PostKind::simple && builtin(peek().simple) && at(SimpleKind::OP_LPAREN,1) &&
-        !at(SimpleKind::OP_RPAREN,2) && !type_start(2)) return expression(2);
+    if (type_start() && at(SimpleKind::OP_LPAREN,1) &&
+        !at(SimpleKind::OP_RPAREN,2) && !at(SimpleKind::OP_STAR,2) &&
+        !at(SimpleKind::OP_AMP,2) && !at(SimpleKind::OP_LAND,2) &&
+        !at(SimpleKind::OP_DOTS,2) && !type_start(2)) return expression(2);
     if (type_start()) return type_id();
     return expression(2);
 }
@@ -95,11 +97,15 @@ NodeId SyntaxParser::template_declaration() {
     NodeId result=tree_.node(SyntaxKind::TemplateDeclaration);
     SyntaxScopeId owner=active_.back(); enter(); tree_.nodes[result].scope=active_.back();
     tree_.append(result,template_clause());
-    ++template_depth_; NodeId body=declaration(); --template_depth_; tree_.append(result,body);
+    ++template_depth_; NodeId body=declaration(); --template_depth_;
+    // Failed nested productions need not balance active scopes. Do not publish
+    // or inspect an incomplete declaration; the TU parser is discarded.
+    if (expected_) return 0;
+    tree_.append(result,body);
     // Publish only the declared entity, never the parameter environment. The
     // class/function graph retains that environment as its indexed parent.
     NodeId entity=body;
-    if (body && (tree_.nodes[body].kind==SyntaxKind::SimpleDeclaration || (tree_.nodes[body].kind==SyntaxKind::FunctionDefinition || tree_.nodes[body].kind==SyntaxKind::Class))) {
+    if (body && (tree_.nodes[body].kind==SyntaxKind::SimpleDeclaration || tree_.nodes[body].kind==SyntaxKind::FunctionDefinition)) {
         for (auto e=tree_.nodes[body].first;e;e=tree_.edges[e].next) {
             NodeId c=tree_.edges[e].child;
             if (tree_.nodes[c].kind==SyntaxKind::Declarator) { entity=c; break; }

@@ -122,7 +122,7 @@ public:
     NodeId literal(const PostToken&);
     void append(NodeId parent, NodeId child);
     NodeId child(NodeId parent) const;
-    std::string compact(NodeId, const IdentifierTable&) const;
+    std::string compact(NodeId, const IdentifierTable&, bool omit_root_typename=false) const;
     void dump(std::ostream&, const IdentifierTable&, NodeId root) const;
 };
 int emit_ast(const std::string& output, const std::vector<std::string>& inputs, bool telemetry = false);
