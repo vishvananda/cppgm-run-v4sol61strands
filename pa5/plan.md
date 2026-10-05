@@ -3,93 +3,99 @@
 Stage base commit: 08275a628da86ffd921633806a3f9ca72fcaaaeb
 Last reviewed commit: 08275a628da86ffd921633806a3f9ca72fcaaaeb
 
-## Active extension (loop 10)
-- Turn HEAD: 5e260a5d9ad20d888c2bc6f42ede78f63c7d1f04; inherited stage/review
-  markers above preserved. Baseline 68/188.
-- Owner `syntax`: retained indexed scope environments, namespace/using and enum
-  declarations, qualified category decisions. Data flow is interned IDs -> scope
-  bindings/edges -> structured name nodes, never joined-string lookup or TU scan.
-  Target O(tokens + graph + language-required scope/dependency visits), geometric
-  storage; validate fixture ASTs, portable GCC/Clang cases, scope-isolation and
-  repeated pinned PMU/latency/RSS scaling.
-
-## Design / completed group
-- Turn start 0/188; final 68/188 (120 original failures remain, coverage unchanged).
-  Owner `syntax`: ordinary declarations/declarators/type-ids, expressions,
-  statements, initialization, scoped category facts, driver/TU ownership.
-- Data flow: immutable PP buffers -> structured PostCursor -> bounded lookahead
-  -> TU node/edge/literal arenas -> iterative AST view. Interned identifiers,
-  direct indexed category bindings and undo scopes; no TU lookup scan, parser
-  replay, token-vector copies or string-key semantic signatures. Literal bytes
-  are captured before borrowed cursor advancement; source identities retained.
-- Factored declaration/expression prefixes once; nested/function/member-pointer
-  declarators, typed exception suffixes/handlers, aliases/decltype, linkage,
-  casts/traits, lambda capture identities, allocation and attributes. Unary and
-  right-associative assignment chains use explicit work stacks. Graph is the
-  future semantic surface, not an intermediate to copy/reparse.
-- New operator IDs carry token/type/suffix identities. Rendering compact spelling
-  is dump-only. Scope restoration covers parameters, branches/loops and TUs.
-  New allocation declarators do not consume initialization as parameter clauses.
-- Cost: O(consumed tokens + graph + emitted view), O(TU graph + scope undo +
-  grammar-depth work) storage. Normal lookahead <=3, 100k chain controls <=2.
-  No whole-TU search/cache or speculative abandoned nodes; direct graph control
-  checks every node is reachable exactly once, stable views and typed values.
+## Design / spec alignment
+- Loop 10 began at HEAD 5e260a5d9ad20d888c2bc6f42ede78f63c7d1f04,
+  68/188. Final 77/188: original failures 120 -> 111, no regressions or coverage
+  changes. Increments: 12775e55 (indexed environments), 2ab39a96 (lookup rules).
+- Owner `syntax`: namespace definitions/reopening/aliases, inline and unnamed
+  visibility, using declarations/directives, enum bodies/opaque declarations/
+  underlying types/enumerators, typedef/alias scope propagation, qualified
+  category decisions including value calls, casts and qualifier-only shadowing.
+- Data flow: immutable source -> streaming PostCursor -> bounded common-prefix
+  factoring -> TU node/edge/literal + indexed scope arenas -> explicit AST view.
+  Names use interned IDs; scope IDs and resolved name/category/terminal facts
+  survive parser destruction. No rendered-name keys, TU searches, grammar replay,
+  copied token streams, speculative abandoned nodes or process-global caches.
+- Scope indexes have lexical parents and nominated edges; namespace ancestry
+  controls unqualified using-directive placement (N3485 7.3.4/2,4, local
+  doc/n3485.txt:9459-9494). Qualified lookup does not search lexical parents.
+  Lookup visits only language-relevant parents/nominations; generation stamps
+  avoid per-query TU-sized sets. Import membership is indexed/deduplicated.
+  Unscoped enumerators bind directly, not one new lookup edge per enum.
+- Work/storage: O(tokens + graph + required lexical/nominated visits), with
+  common-namespace ancestry work only for matching nominated candidates.
+  Geometric TU-owned arenas; graph release is per TU. No canonical semantic
+  types/overload resolution invented at this syntax-only stage. Retain this
+  graph/environment surface for PA6+, rather than copying/reparsing it.
 
 ## Performance evidence
-`$RALPH_ARTIFACT_DIR/pa5/certified`: frozen hashes/flags, CPU0 Xeon E5-2696 v4,
-identical bytes GCC/Clang/reference-qualified (fixture syntax-only), exact AST
-parity; warmup + 3 interleaved pinned instructions:u/cycles:u runs, raw IPC,
-wall/user/system/RSS, enabled/running=100%; separate branch/cache triples/profile.
-- 2k->20k functions: 757.9M->7552.4M instructions (~9.97x), 28->199MiB RSS;
-  20k tokens=1,440,012 nodes=1,600,017 queries=360,001 lookahead=3. Large input
-  .819s parse/.258s view in one sample; 48.6MB AST is measured separately.
-- 20k median/range: student 1.09s [1.09,1.11], 199MiB, 3147.5M cycles,
-  IPC2.40; GCC 1.66s [1.62,1.71], 270MiB, 7354.6M instructions/5156.1M cycles;
-  Clang 3.07s [3.01,3.08], 136MiB, 7175.6M/10287.1M; reference 1.07s
-  [1.06,1.08], 161MiB, 7734.4M/3202.1M. Supported costs remain constant-factor.
-- Rich 2k lambda/allocation/exception mix: student .25s [ .25,.27], 52MiB,
-  1787.6M instructions/750.7M cycles/IPC2.38; GCC .96s/114MiB/2908.2M;
-  Clang 1.01s/106MiB/2005.1M; reference .24s/43MiB/1869.3M.
-- Against frozen ordinary-parser increment: +~9.7% instructions, +~29.6% RSS
-  for literal/source/structured-node preservation and explicit syntax handling;
-  profile shows cursor/lexing/arena growth and explicit output, no search blowup.
-  Full host work includes semantic checks absent at PA5; no general hosted-C++
-  parity claimed. Earlier noisy small-input timings retained and inconclusive.
-- Largest accepted fixture is operator-ID family: student 3.24M instructions,
-  2.80M cycles, IPC1.16; reference 3.29M/2.85M. Wall granularity inconclusive.
-  Compiler text=341,096 bytes. Generated-program runtime/text/object size N/A at
-  syntax-only PA5. No prior target reclassified or performance limit waived.
-- PA24/26 graph/MIR choices must anticipate PA33/34 per-workload <=1.25x GCC
-  executable instructions; mandatory future gate is not satisfied early.
+`$RALPH_ARTIFACT_DIR/pa5/namespaces/{final-ordinary,final-scale}` contains frozen
+hashes/flags, CPU0 Xeon E5-2696 v4, GCC/Clang qualification of identical bytes,
+full reference AST parity, warmup then 3 interleaved pinned instructions:u /
+cycles:u samples, raw IPC, wall/user/system/RSS and 100% event running times.
+Separate branch/cache triples and sampled profiles retained; no small timing
+improvement claimed. Earlier measurements in `pa5/certified` remain historical.
+- Ordinary 2k -> 20k: 830.38M -> 8272.03M instructions (~9.96x). At 20k:
+  student 1.28s [1.24,1.30], 277.7MiB, 3577.79M cycles, IPC2.31;
+  GCC 1.60s [1.59,1.62], 270.4MiB, 7354.63M instructions / 5147.94M cycles;
+  Clang 3.10s [2.99,3.26], 135.6MiB; reference 1.06s [0.99,1.11], 160.6MiB.
+  Versus turn-start frozen ordinary parser: +9.53% instructions, +39.6% RSS,
+  1.05s -> 1.28s; retained environments and wider typed graph facts cost real
+  memory/work, not a hidden speedup. Still bounded host-relative broad costs.
+- Namespace/enum 2k -> 20k: 1266.51M -> 12726.23M instructions (~10.05x),
+  46.6 -> 540.1MiB RSS. Large: 2.7M tokens, 2.38M nodes, 340001 scopes,
+  1.04M category queries, max lookahead 3; 64.2MB AST view measured separately.
+  Student 2.09s [2.05,2.29], 5954.87M cycles, IPC2.14;
+  GCC 3.04s [3.01,3.31], 768.5MiB, 10185.996M instructions / 9169.50M cycles;
+  Clang 8.24s [7.97,8.27], 255.8MiB; reference 1.72s [1.68,1.76], 282.6MiB.
+  Supported scale is linear, not a whole-TU lookup scan. Profile dominated by
+  cursor/arena allocation and explicit view work, not unrelated-scope searches.
+- Rich 2k mix: student .30s / 67.1MiB / 1948.54M instructions, GCC .95s /
+  114.4MiB; Clang .99s / 106.4MiB. Largest accepted fixture measured separately;
+  sub-tick timing remains inconclusive. Compiler text 359224 bytes.
+- 100k unary/assignment graph controls pass with ASan/UBSan, lookahead2; parsing
+  .034/.094s in observations. Explicit deeply indented AST output costs
+  73.3/146.1s: output bytes grow quadratically with depth, not parser work.
+  A combined command timed out during this huge view; graph-only reruns pass.
+- Runtime/text/object size of generated programs N/A at PA5; compiler size and
+  AST view size are separate. Full host semantic/header parity is not claimed.
+  PA24/26 graph/MIR choices must anticipate mandatory PA33/34 per-workload
+  <=1.25x GCC executable instructions. No gate or prior target waived/reclassified.
 
 ## Validation / handoff ledger
-- Commits include ordinary-parser foundation, factored ambiguity, structured names,
-  ownership/scopes/operator and allocation extensions; intended changes committed.
-- `make test-report-through-pa4`: 205/205 pass. `make test-pa5`: 68/188,
-  exit2 (expected incomplete), no accepted-case AST mismatches. File audit:
-  46 files pass. No required fixtures/reference/comparison/coverage edits.
-- Explicit PA1-4 checks/audits pass (including typed provenance, 6,432 PA3 oracle
-  rows, PA4 interactions and inherited scale input controls). PA5 13 families,
-  portable integration file, 6 rejections, driver/TU resets pass with GCC/Clang;
-  graph and 100k unary/assignment checks pass, including Clang ASan/UBSan.
-  Sanitized driver runs the same explicit semantic/rejection controls.
-- Two personal reference defects (implicit substatement scopes and new int*())
-  have reducers, local N3485 clause/line proof and exact bundle revision in
-  `student.tests/pa5/reference-notes.md`; required outputs are unchanged.
-- **Unfinished implementation:** namespace/using entities; class/enum bodies,
-  bases/members/special functions; template parameters/argument lists, angle
-  splitting and dependent/qualified category lookup. Seven host-qualified
-  capability probes record each current gap in `remaining-capabilities.json`.
-  Ordinary-group failures now depend on these missing environments, not more
-  local expression fixes. Full-stage validation remains non-passing.
-- **Boundary:** extend next with stable scope/entity handles and qualified
-  category indexing shared by namespace/class/template owners. Complete-class
-  visibility/dependent template facts cannot be added coherently as lexical
-  shortcuts to the completed ordinary group; they need their own retained
-  environments and single-parse body discipline. Stop here after finishing,
-  testing and measuring the related group, not at minimum progress.
-- **Independent audit questions (not waived):** source locations of structural
-  wrappers; deep mixed nesting/conditional chains; full retained-graph extension
-  without copying at PA6; complete-class/deferred-body and qualified lookup
-  complexity once implemented; general hosted capability and emitted-code
-  quality at their owning stages. No independent whole-stage certification.
+- `make test-report-through-pa4`: 205/205, exit0. `make test-pa5`: 77/188,
+  exit2 (incomplete), 111 failures, no accepted-case AST mismatch. File audit:
+  47 files pass. No required fixtures, reference outputs or comparisons changed.
+- Explicit inherited PA1-4 behavior/cursor/provenance controls pass with hosts;
+  PA2/3/4 independent controls pass (6432 PA3 oracle rows). Supplemental PA4
+  frozen scale inputs executed explicitly (21k/85k/340k conditionals,
+  1k/4k/16k replacements, 2k/8k headers), expected token counts confirmed.
+- PA5 ordinary portable file + 13 families/6 rejections/driver reset pass;
+  namespace/enum integration + 23 families/6 rejections pass with GCC/Clang.
+  Retained graph, no-abandoned-node, stable-view and scope-identity controls pass
+  after parser destruction. Clang ASan/UBSan graph and both driver suites pass.
+- Independent capability observations (`pa5/remaining-capabilities.json`) now
+  pass namespace and enum probes; class/special-member/template/dependent/
+  non-type-template probes still fail although GCC/Clang/reference accept.
+  Same-source gaps grouped by capabilities, not fixture-specific repairs.
+- Inherited two personal reference disagreements remain documented in
+  `student.tests/pa5/reference-notes.md`; no bundle revision this turn. New
+  portable controls use host qualification plus structured invariants where
+  the reference's category handling is not reliable; no course oracle weakened.
+- **Unfinished implementation:** classes/bases/members/special functions;
+  complete-class late visibility with single-parse deferred member bodies;
+  template parameters/arguments, angle splitting and dependent qualified facts.
+  Overload/name ambiguity beyond syntax categories belongs to later semantics.
+- **Boundary:** namespace/enum/using and their qualified category behavior are
+  coherently finished and measured, including newly found common-ancestor and
+  namespace-only lookup defects. Remaining course failures require class or
+  template grammar/environments. Inline-member late types and dependent template
+  arguments need distinct retained body/context discipline; lexical shortcuts
+  would violate single parsing/lookup architecture. That new ownership group is
+  the next increment, not more local fixes within this completed group.
+- **Independent audit questions (not waived):** full namespace lookup candidate
+  ambiguity/overload behavior at semantic stages; structural wrapper locations;
+  deep mixed/conditional nesting; future complete-class/dependent lookup costs;
+  hosted-header capability/representation costs beyond these supported inputs.
+  Earlier PA evidence remains preserved. This is an incomplete implementation
+  handoff to Ralph, not whole-stage certification or permission to advance.

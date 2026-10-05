@@ -42,3 +42,39 @@ reference. It records current student failures; those observations are neither
 passing controls nor a substitute for implementing the remaining PA5 grammar.
 `reference-notes.md` documents two reduced personal oracle disagreements with
 C++11 rule proofs and the unchanged bundle revision. No required output changed.
+
+## Namespace / enum extension (loop 10)
+
+```sh
+python3 student.tests/pa5/scopes.py
+sources=$(sed -n 's/^FRONTEND_OBJ_BASENAMES_cppgm++ := //p' dev/frontend_source_sets.mk | awk '{for(i=1;i<=NF;i++)printf "dev/src/%s.cpp ",$i}')
+g++ -std=c++11 -O2 -Idev/src student.tests/pa5/scopes.cpp $sources -o "$RALPH_ARTIFACT_DIR/pa5/scopes-graph"
+"$RALPH_ARTIFACT_DIR/pa5/scopes-graph" student.tests/pa5/scopes-portable.cpp
+# Also qualify the retained graph and both driver suites with Clang ASan/UBSan.
+python3 student.tests/pa5/measure-scopes.py "$RALPH_ARTIFACT_DIR/pa5/scopes-measure"
+```
+
+`scopes.py` adds a portable integration source, 23 portable families and six
+syntax rejections. It covers namespace reopening, inline/unnamed visibility,
+alias and enum qualifier shadowing, using cycles/transitivity/common-ancestor
+placement, namespace-only lookup, enum bodies/underlying types/opaque forms,
+typedef/alias scope propagation and qualified expression/declaration decisions.
+Reference AST equality is checked for reliable observation families; portable
+host acceptance and graph invariants remain independent controls. There are no
+course reference changes. `scopes.cpp` destroys the parser before validating
+retained scope IDs, indexed bindings, nominated edges, node reachability and
+repeatable views.
+
+`measure-scopes.py` freezes a 2k/20k identical-byte namespace/enum/using workload,
+qualifies GCC/Clang/reference and exact AST views, then warms and interleaves
+three pinned instructions/cycles plus latency/RSS samples for all variants.
+Separate branch/cache runs and a sampling profile investigate the large input.
+It reports compiler binary and AST sizes separately; emitted executable runtime
+and code size do not exist at PA5. Run ordinary `measure.py` with the intended
+frozen parent `base-parser` to retain ordinary-group A/B evidence as well.
+
+Loop-10 final evidence is in `$RALPH_ARTIFACT_DIR/pa5/namespaces/final-ordinary`
+and `final-scale`. Earlier failed experiments and pre-fix measurements are
+retained. The inherited 100k chains are graph-only scale controls: deeply
+indented dump bytes grow quadratically with depth. A combined full-view run hit
+a command timeout; explicit sanitized graph-only reruns passed for both chains.
